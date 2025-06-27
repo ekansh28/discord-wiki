@@ -1,25 +1,39 @@
 // src/app/page.tsx
 'use client'
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
+import Image from 'next/image'
 import EnhancedWikiRouter from './components/EnhancedWikiRouter'
 import AuthPopup from './components/AuthPopup'
 
 export default function HomePage() {
+  const [showAuthPopup, setShowAuthPopup] = useState(false)
+
   useEffect(() => {
-    // Redirect homepage to main-page if we're at root
+    // Redirect homepage to ballscord page if we're at root
     if (window.location.pathname === '/') {
-      window.history.replaceState({}, '', '/wiki/main-page')
+      window.history.replaceState({}, '', '/wiki/ballscord')
     }
   }, [])
+
+  const handleShowAuthPopup = () => {
+    setShowAuthPopup(true)
+  }
+
+  const handleCloseAuthPopup = () => {
+    setShowAuthPopup(false)
+  }
 
   return (
     <div className="wrapper">
       <header>
-        <img
+        <Image
           src="https://cdn.sekansh21.workers.dev/fire.gif"
           alt="Fire GIF"
           className="fire-gif"
+          width={40}
+          height={40}
+          unoptimized
         />
         Ballscord Wiki
         <div style={{ 
@@ -36,7 +50,7 @@ export default function HomePage() {
       <nav>
         <a href="#" onClick={(e) => { 
           e.preventDefault(); 
-          window.history.pushState({}, '', '/wiki/main-page');
+          window.history.pushState({}, '', '/wiki/ballscord');
           window.dispatchEvent(new PopStateEvent('popstate'));
         }}>
           🏠 Home
@@ -74,10 +88,36 @@ export default function HomePage() {
           🎲 Random
         </a>
         
-        <AuthPopup />
+        {/* AuthPopup with controlled visibility */}
+        <span onClick={handleShowAuthPopup} style={{ cursor: 'pointer' }}>
+          <AuthPopup />
+        </span>
       </nav>
 
-      <EnhancedWikiRouter />
+      <EnhancedWikiRouter onShowAuthPopup={handleShowAuthPopup} />
+
+      {/* Controlled Auth Popup */}
+      {showAuthPopup && (
+        <div className="auth-popup-backdrop" onClick={handleCloseAuthPopup}>
+          <div className="auth-popup" onClick={(e) => e.stopPropagation()}>
+            <div className="auth-popup-header">
+              <span>🔐 User Authentication</span>
+              <button 
+                className="auth-popup-close"
+                onClick={handleCloseAuthPopup}
+                title="Close"
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="auth-popup-content">
+              <AuthPopup isPopupMode={true} onClose={handleCloseAuthPopup} />
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer>
         🌀 Made with love & chaos on Neocities | Styled like 2007 | Powered by your trauma

@@ -5,9 +5,9 @@ import { slugify } from './wiki-utils'
 
 // Simple in-memory cache
 class WikiCache {
-  private cache = new Map<string, { data: any; timestamp: number; ttl: number }>()
+  private cache = new Map<string, { data: unknown; timestamp: number; ttl: number }>()
   
-  set(key: string, data: any, ttlSeconds = 300) { // 5 minutes default
+  set(key: string, data: unknown, ttlSeconds = 300) { // 5 minutes default
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
@@ -15,7 +15,7 @@ class WikiCache {
     })
   }
   
-  get(key: string) {
+  get(key: string): unknown | null {
     const cached = this.cache.get(key)
     if (!cached) return null
     
@@ -159,7 +159,7 @@ export class EnhancedWikiAPI {
   // Fast page loading with caching
   static async getPage(slug: string): Promise<Page | null> {
     const cacheKey = `page:${slug}`
-    const cached = cache.get(cacheKey)
+    const cached = cache.get(cacheKey) as Page | null
     if (cached) return cached
 
     try {
@@ -197,7 +197,7 @@ export class EnhancedWikiAPI {
 
     // Check cache first
     for (const slug of slugs) {
-      const cached = cache.get(`page:${slug}`)
+      const cached = cache.get(`page:${slug}`) as Page | null
       if (cached) {
         results.push(cached)
       } else {
@@ -224,30 +224,30 @@ export class EnhancedWikiAPI {
   }
 
   // Fast page search with caching
- static async searchPages(query: string): Promise<PageSummary[]> {
-  if (!query.trim()) return []
-  
-  const cacheKey = `search:${query.toLowerCase()}`
-  const cached = cache.get(cacheKey)
-  if (cached) return cached
+  static async searchPages(query: string): Promise<PageSummary[]> {
+    if (!query.trim()) return []
+    
+    const cacheKey = `search:${query.toLowerCase()}`
+    const cached = cache.get(cacheKey) as PageSummary[] | null
+    if (cached) return cached
 
-  const { data, error } = await supabase
-    .from('pages')
-    .select('id, title, slug') // Keep as PageSummary (lightweight for search)
-    .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
-    .order('title')
-    .limit(20)
+    const { data, error } = await supabase
+      .from('pages')
+      .select('id, title, slug')
+      .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
+      .order('title')
+      .limit(20)
 
-  if (error) return []
-  
-  cache.set(cacheKey, data || [], 120) // 2 minutes
-  return data || []
-}
+    if (error) return []
+    
+    cache.set(cacheKey, data || [], 120) // 2 minutes
+    return data || []
+  }
 
   // Get all page slugs for link validation (cached)
   static async getAllPageSlugs(): Promise<string[]> {
     const cacheKey = 'all-page-slugs'
-    const cached = cache.get(cacheKey)
+    const cached = cache.get(cacheKey) as string[] | null
     if (cached) return cached
 
     const { data, error } = await supabase
@@ -345,11 +345,12 @@ export class EnhancedWikiAPI {
         success: true,
         needsApproval: !canDirectEdit
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       return {
         success: false,
         needsApproval: false,
-        error: error.message
+        error: errorMessage
       }
     }
   }
@@ -370,7 +371,7 @@ export class EnhancedWikiAPI {
   // Fast user profile loading
   static async getUserProfile(userId: string): Promise<UserProfile | null> {
     const cacheKey = `user:${userId}`
-    const cached = cache.get(cacheKey)
+    const cached = cache.get(cacheKey) as UserProfile | null
     if (cached) return cached
 
     const { data, error } = await supabase
@@ -388,7 +389,7 @@ export class EnhancedWikiAPI {
   // Get page revisions with caching
   static async getPageRevisions(pageId: string, limit = 10): Promise<PageRevision[]> {
     const cacheKey = `revisions:${pageId}:${limit}`
-    const cached = cache.get(cacheKey)
+    const cached = cache.get(cacheKey) as PageRevision[] | null
     if (cached) return cached
 
     const { data, error } = await supabase
@@ -422,7 +423,7 @@ export class EnhancedWikiAPI {
     const toFetch: string[] = []
 
     for (const id of userIds) {
-      const cachedUser = cache.get(`user:${id}`)
+      const cachedUser = cache.get(`user:${id}`) as UserProfile | null
       if (cachedUser) {
         cached.push(cachedUser)
       } else {
@@ -450,7 +451,7 @@ export class EnhancedWikiAPI {
   // Categories with caching
   static async getAllCategories(): Promise<Category[]> {
     const cacheKey = 'all-categories'
-    const cached = cache.get(cacheKey)
+    const cached = cache.get(cacheKey) as Category[] | null
     if (cached) return cached
 
     const { data, error } = await supabase
@@ -467,7 +468,7 @@ export class EnhancedWikiAPI {
   // Recent changes with caching
   static async getRecentChanges(limit = 50): Promise<PageRevision[]> {
     const cacheKey = `recent-changes:${limit}`
-    const cached = cache.get(cacheKey)
+    const cached = cache.get(cacheKey) as PageRevision[] | null
     if (cached) return cached
 
     const { data, error } = await supabase

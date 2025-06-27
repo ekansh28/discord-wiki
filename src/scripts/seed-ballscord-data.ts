@@ -1,9 +1,8 @@
-// scripts/seed-ballscord-data.ts
+/* scripts/seed-ballscord-data.ts
 import dotenv from 'dotenv';
 dotenv.config();
 import { createClient } from '@supabase/supabase-js'
-import { slugify } from '../lib/wiki-utils'
-import { Page, PageRevision, UserProfile, Category, PendingChange, PageSummary } from '../types/wiki'
+
 const supabaseUrl = 'https://mbessirvgrfztivyftfl.supabase.co'
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_KEY
 
@@ -13,7 +12,7 @@ if (!supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-// Main page content extracted from the XML
+// Updated ballscord page content as the main page
 const ballscordMainPageContent = `{{Infobox
 |title        = Ballscord Wiki
 |image        = Discord-Logo-Color.png
@@ -35,7 +34,7 @@ const ballscordMainPageContent = `{{Infobox
 The history of **Ballscord Wiki** is a chaotic saga of growth, conflicts, and internet culture. Below are the defining chapters of the server's evolution. You can also read about it here on Ekansh's outdated website: https://www.geocities.ws/ballscord/pages/Lore/Lore.html
 
 ### Founding and Early Days
-* **The Birth (2021)**: Founded by [[User:OwnerUsername|Ekansh]] and friends, the server began as a small community spun off from another group. Early experiments with vanity URLs (like "tech" and later "racism") attracted rapid—if unpredictable—growth.
+* **The Birth (2021)**: Founded by [[Ekansh]] and friends, the server began as a small community spun off from another group. Early experiments with vanity URLs (like "tech" and later "racism") attracted rapid—if unpredictable—growth.
 * **The Promotion Boom**: A strategic advertisement in a larger server (Trollcord) brought an influx of members, though tensions arose with rival communities.
 
 ### Major Events
@@ -56,58 +55,35 @@ For uncensored details (and questionable life choices), see the [https://www.geo
 ## Important Members
 
 ### Owner
-[[File:ekanshPFP.png|40x40px]] **[https://instagram.com/15ekansh - ekansh]** – creator of the server
+[[File:ekanshPFP.png|40x40px]] **[https://instagram.com/15ekansh ekansh]** – creator of the server
 
 ### Co-Owners
-[[File:jaonPFP.png|50x50px]] **[[User:CoOwner1|Jaon- Jaon]]** – about
+[[File:jaonPFP.png|50x50px]] **[[Jaon]]** – co-owner
 
-[[File:genPFP.png|50x50px]] **[[User:CoOwner2|Gen- Gen]]** – about
+[[File:genPFP.png|50x50px]] **[[Gen]]** – co-owner
 
-[[File:aleksPFP.png|50x50px]] **[[User:CoOwner3|Aleks- Aleks]]** – about
+[[File:aleksPFP.png|50x50px]] **[[Aleks]]** – co-owner
 
 ### Moderators
-[[File:Mod1PFP.jpg|90px]]  
-* **[[User:Mod1|Mod1]]** – The Peacekeeper. Wields banhammer like it's Excalibur on a caffeine drip.
-
-[[File:Mod2PFP.jpg|90px]]  
-* **[[User:Mod2|Mod2]]** – Brings justice with less mercy than a microwave timer.
-
-[[File:Mod3PFP.jpg|90px]]  
-* **[[User:Mod3|Mod3]]** – Organizes events and regrets them instantly.
+* **[[Mod1]]** – The Peacekeeper. Wields banhammer like it's Excalibur on a caffeine drip.
+* **[[Mod2]]** – Brings justice with less mercy than a microwave timer.
+* **[[Mod3]]** – Organizes events and regrets them instantly.
 
 ### Notable Members
-[[File:ClownLord69PFP.jpg|90px]]  
-* **[[User:ClownLord69]]** – Meme overlord. You've laughed at his content and hated yourself after.
-
-[[File:SpammerDudePFP.jpg|90px]]  
-* **[[User:SpammerDude]]** – Banned 15 times, came back 16. He is inevitable.
-
-[[File:HistorianBotPFP.jpg|90px]]  
-* **[[User:HistorianBot]]** – Has a better memory than your ex. Records everything, including that one time you rage quit.
+* **[[ClownLord69]]** – Meme overlord. You've laughed at his content and hated yourself after.
+* **[[SpammerDude]]** – Banned 15 times, came back 16. He is inevitable.
+* **[[HistorianBot]]** – Has a better memory than your ex. Records everything, including that one time you rage quit.
 
 ## Channels
-* #staff-furry-rp — It exists.
-* #minecraft — There's a Minecraft server. It supports Java and Bedrock, but it's emptier nowadays.
-* #wear-or-tear — Rate peoples' clothes.
-* #stage
 
 **Important**
 * #info — Has staff applications and the appeal server link.
 * #rules
 * #announcements
-* #color-roles-݁˚
+* #color-roles
 
-**◆◆◆◆**
-* #˚ʚ♡ɞ˚-heartboard — Get "❤️" reactions and a bot puts your message here.
-* #starboard — Get "⭐️" reactions and a bot puts your message here.
-* #୧partners
-* #patreon — There's a Patreon so you can bribe staff.
-
-**Tickets**
-* #create-a-ticket
-
-**Text channels**
-* #genreal — Often gets purged and deleted.
+**General**
+* #general — Often gets purged and deleted.
 * #bots
 * #gaming
 * #critters — Post animals, pets, etcetera.
@@ -119,6 +95,8 @@ For uncensored details (and questionable life choices), see the [https://www.geo
 * #memes
 * #food
 * #count
+* #wear-or-tear — Rate peoples' clothes.
+* #stage
 
 **Voice Channels**
 * Bloods
@@ -141,289 +119,14 @@ We don't recommend it, but if you're broken enough to try: [https://discord.gg/g
 
 ## See Also
 * [[Server Lore]]
-* [[List of Server Memes]]
-* [[Mod List]]
-* [[Bot Documentation]]
-
-[[Category:Discord Servers]]
-[[Category:Communities]]`
-
-// Ekansh user page content
-const ekanshPageContent = `<!-- USER PROFILE PAGE FOR SERVER OWNER -->
-
-## Ekansh
-
-{{Infobox
-|title        = Ekansh
-|image        = ekanshPFP.png
-|caption      = Owner of Ballscord and part-time chaos generator
-|full_name    = Ekansh Sharma
-|nickname     = ekansh, wood, snailvagina78, ovulatingchair21
-|location     = India
-|status       = Executed
-|role         = silly owner of Ballscord
-|website      = [https://tinchat.online tinchat.online]
-|socials      = [https://instagram.com/15ekansh Instagram]
-}}
-
-*This article is about the founder of Ballscord. For the server itself, see [[Ballscord]].*
-
-## Biography
-**Ekansh** (born in 2005) is a silly, edgy guy best known for founding the chaotic Discord server **Ballscord**. He's been described as "what happens when you give a 15-year-old admin rights and too much free time."
-
-## Early Life
-Not much is publicly known about his early life, but it's widely agreed that his rise began at age 15 when he joined the notorious server *The Cum Palace*. It was there that he met key figures who helped him found what would become Ballscord.
-
-## Role in Ballscord
-Ekansh is the original founder and central figure behind Ballscord. 
-His silly acts include :
-
-* Creating 15 alt accounts for Nitro boosts
-* Purchasing server ads on Trollcord
-* Launching cursed vanity URLs like \`discord.gg/racism\`
-* Surviving multiple server deletions, betrayals, and minor breakdowns
-
-He is also known for creating the infamous silly [[EkanshBot]].
-
-## Controversies
-Ekansh has been involved in numerous questionable decisions including:
-* Nuking co-owned servers out of spite or boredom
-* Public feuds with rival communities (e.g., Pisscord)
-* Allegations (many later disproven) circulated by ex-moderators
-
-Despite this, his community has remained loyal — or maybe they're just trapped in Stockholm Syndrome.
-
-## Projects
-In addition to Ballscord, Ekansh is the developer of:
-* [https://tinchat.online TinChat.online] – A retro-styled social platform inspired by MySpace, Discord, and Omegle.
-* **Spotify Artist Project**: Ekansh is also an **experimental ambient musician**. 
-
-## Music Career
-* 🎧 **Spotify**: [https://open.spotify.com/artist/72uXuSxQ9QxRGsPQ25QUNe?si=7mvgWMUdRiWlgv-tK5-CgA Stream Ekansh on Spotify]
-* He previously released ambient/glitchcore tracks under the alias **"Ballscord"**, but later discontinued the project.
-
-## Social Media
-* **Instagram**: [https://instagram.com/15ekansh @15ekansh]
-* **Spotify**: [https://open.spotify.com/artist/72uXuSxQ9QxRGsPQ25QUNe Ekansh on Spotify]
-* **Website**: [https://tinchat.online tinchat.online]
-
-## External Links
-* [[Ballscord]]
-* [[Server Lore]]
-* [[List of Ballscord Events]]
-* [[Mod List]]
-
-[[Category:Users]]
-[[Category:Server Owners]]
-[[Category:Ballscord]]
-[[Category:Musicians]]`
-
-// Server Lore page
-const serverLoreContent = `# Server Lore
-
-The **Ballscord Server Lore** is an extensive and chaotic chronicle of one of Discord's most notorious communities. This page contains the complete timeline of events, drama, and memorable moments that have shaped Ballscord into what it is today.
-
-## Full Lore Archive
-
-For the complete, uncensored history of Ballscord, visit Ekansh's original documentation:
-**[https://www.geocities.ws/ballscord/pages/Lore/Lore.html Official Ballscord Lore Archives]**
-
-## Timeline Overview
-
-### 2021: The Beginning
-* Server founded by [[Ekansh]] and early crew
-* First vanity URL experiments
-* Initial growth phase
-
-### 2022: The Growth
-* Major recruitment drives
-* First major drama incidents
-* Community structure establishment
-
-### 2023: The Chaos
-* Multiple server recreations
-* Vanity URL wars
-* The Great Emoji Conflict
-
-### 2024: Modern Era
-* Current server structure
-* Ongoing community evolution
-* Recent events and updates
-
-## Major Events
-
-### The Great Emoji War
-A legendary conflict that erupted when a beloved emoji was removed from the server. What started as simple complaints escalated into weeks of meme warfare, faction creation, and server-wide chaos.
-
-### The Vanity Struggles
-The server's attempts to secure and maintain custom vanity URLs, particularly the infamous "racism" URL, led to numerous scams, negotiations, and community drama.
-
-### The Mod Revolt
-A period of internal strife when moderator changes led to community upheaval, mass bans, and eventual reconciliation.
-
-## Important Figures
-
-See [[Ekansh]] for information about the server founder.
-
-Other notable figures include various moderators, long-time members, and infamous troublemakers who have left their mark on server history.
-
-## Cultural Impact
-
-Ballscord has influenced numerous other Discord communities and has become a case study in online community management (or mismanagement, depending on your perspective).
-
-## See Also
-* [[Ballscord]]
 * [[Ekansh]]
 * [[List of Server Memes]]
 * [[Community Guidelines]]
+* [[Help:Editing]]
 
-[[Category:History]]
-[[Category:Ballscord]]
-[[Category:Communities]]`
-
-// NEW MISSING PAGES CONTENT
-const helpEditingContent = `# Help: Editing Pages
-
-This page explains how to edit pages on the Ballscord Wiki.
-
-## Getting Started
-
-To edit a page, click the "Edit" button at the top of any page. You'll need to be logged in to make edits.
-
-## Visual Editor
-
-The wiki includes a rich visual editor that lets you format text without knowing markup:
-
-* **Bold** and *italic* text formatting
-* Headings and lists
-* Wiki links to other pages
-* Images and tables
-* Colors and fonts
-
-## Wiki Markup
-
-You can also use the source editor for advanced formatting:
-
-\`\`\`
-**Bold text**
-*Italic text*
-[[Link to Page]]
-[[Page Name|Display Text]]
-# Heading 1
-## Heading 2
-* List item
-\`\`\`
-
-## Creating Links
-
-To link to other wiki pages, use double square brackets:
-* \`[[Main Page]]\` - Links to the main page
-* \`[[User:Ekansh|Ekansh]]\` - Links to Ekansh's user page with custom text
-
-## Categories
-
-Add categories to pages using:
-\`[[Category:Help]]\`
-
-## Tips
-
-* Always provide an edit summary
-* Preview your changes before saving
-* Be respectful and constructive
-* Follow the community guidelines
-
-## Need Help?
-
-Ask questions in the Discord server or contact a moderator.
-
-[[Category:Help]]`
-
-const communityGuidelinesContent = `# Community Guidelines
-
-Welcome to the Ballscord Wiki! Please follow these guidelines to maintain a positive community.
-
-## General Rules
-
-1. **Be respectful** - Treat all users with dignity
-2. **Stay on topic** - Keep content relevant to Ballscord
-3. **No vandalism** - Don't delete or damage existing content
-4. **Cite sources** - Back up claims with evidence
-5. **Use edit summaries** - Explain your changes
-
-## Content Standards
-
-* Write in a neutral, encyclopedic tone
-* Avoid personal attacks or drama
-* Keep content appropriate for all ages
-* Respect copyright and fair use
-
-## Editing Etiquette
-
-* Make constructive edits
-* Don't edit war - discuss disagreements
-* Be bold but not reckless
-* Ask for help if unsure
-
-## Consequences
-
-Violations may result in:
-* Warnings
-* Temporary blocks
-* Permanent bans
-* Page protection
-
-## Questions?
-
-Contact the moderators in Discord or on their user pages.
-
-[[Category:Community]]
-[[Category:Help]]`
-
-const featuredContentContent = `# Featured Content
-
-This page showcases the best articles and content on the Ballscord Wiki.
-
-## Featured Articles
-
-### [[Ballscord]]
-The main article about the Discord server, covering its history, culture, and community.
-
-### [[Ekansh]]
-Biography of the server founder and his various projects.
-
-### [[Server Lore]]
-Comprehensive timeline of major events and drama in server history.
-
-## Featured Media
-
-* Server screenshots and memorable moments
-* Memes and community art
-* Music and creative content
-
-## How to Nominate
-
-To nominate content for featuring:
-
-1. Ensure the article is well-written and comprehensive
-2. Check that it follows wiki standards
-3. Post on the community discussion page
-4. Get consensus from active editors
-
-## Criteria
-
-Featured content should be:
-* Accurate and well-sourced
-* Comprehensive coverage of the topic
-* Well-written and engaging
-* Properly formatted with good images
-* Representative of the wiki's best work
-
-## Archive
-
-View all previously featured content in the [[Featured Content Archive]].
-
-[[Category:Featured]]
-[[Category:Community]]`
+[[Category:Discord Servers]]
+[[Category:Communities]]
+[[Category:Main]]`
 
 interface PageData {
   title: string
@@ -434,40 +137,176 @@ interface PageData {
 
 const pages: PageData[] = [
   {
-    title: 'Ballscord Wiki',
-    slug: 'main-page',
+    title: 'Ballscord',
+    slug: 'ballscord', // This becomes the main page
     content: ballscordMainPageContent,
-    categories: ['Discord Servers', 'Communities']
+    categories: ['Discord Servers', 'Communities', 'Main']
   },
   {
     title: 'Ekansh',
     slug: 'ekansh',
-    content: ekanshPageContent,
-    categories: ['Users', 'Server Owners', 'Ballscord', 'Musicians']
+    content: `## Ekansh
+
+**Ekansh** (born in 2005) is the founder and owner of [[Ballscord]], known for creating one of Discord's most chaotic communities.
+
+### Biography
+Ekansh started his online journey at age 15 and quickly became known for his edgy humor and community building skills. He founded Ballscord and has been its central figure ever since.
+
+### Projects
+* **[[Ballscord]]** - Discord server with 9000+ members
+* **[https://tinchat.online TinChat]** - Social platform
+* **Music** - Experimental ambient artist on Spotify
+
+### Social Media
+* **Instagram**: [https://instagram.com/15ekansh @15ekansh]
+* **Spotify**: [https://open.spotify.com/artist/72uXuSxQ9QxRGsPQ25QUNe Ekansh on Spotify]
+
+[[Category:Users]]
+[[Category:Server Owners]]
+[[Category:Musicians]]`,
+    categories: ['Users', 'Server Owners', 'Musicians']
   },
   {
     title: 'Server Lore',
     slug: 'server-lore',
-    content: serverLoreContent,
-    categories: ['History', 'Ballscord', 'Communities']
+    content: `# Server Lore
+
+The complete history of [[Ballscord]] from its founding in 2021 to the present day.
+
+## Timeline
+
+### 2021: The Beginning
+* Server founded by [[Ekansh]]
+* Early growth and community building
+* First vanity URL experiments
+
+### 2022-2024: Evolution
+* Major events and drama
+* Community milestones
+* Ongoing development
+
+## Major Events
+* **The Great Emoji War**
+* **Vanity URL Struggles**
+* **The Mod Revolt**
+* **NSFW Channel Purges**
+
+For the complete uncensored history, visit: [https://www.geocities.ws/ballscord/pages/Lore/Lore.html Official Archives]
+
+[[Category:History]]
+[[Category:Ballscord]]`,
+    categories: ['History', 'Ballscord']
   },
-  // NEW MISSING PAGES
   {
     title: 'Help:Editing',
     slug: 'help-editing',
-    content: helpEditingContent,
+    content: `# Help: Editing Pages
+
+Learn how to edit and create pages on the Ballscord Wiki.
+
+## Getting Started
+1. **Login** - You need to be logged in to edit pages
+2. **Click Edit** - Use the edit button on any page
+3. **Make Changes** - Use the visual or source editor
+4. **Save** - Add an edit summary and save your changes
+
+## Visual Editor
+The visual editor lets you format text easily:
+* **Bold** and *italic* formatting
+* Headings and lists
+* Wiki links: \`[[Page Name]]\`
+* Images and tables
+* Colors and fonts
+
+## Wiki Markup
+For advanced users, the source editor supports:
+* \`**bold**\` and \`*italic*\`
+* \`# Heading 1\`, \`## Heading 2\`
+* \`[[Link to Page]]\`
+* \`* List items\`
+
+## Creating Links
+Link to other pages: \`[[Ballscord]]\`
+Link with custom text: \`[[Ekansh|Server Owner]]\`
+
+## Tips
+* Always provide edit summaries
+* Be respectful and constructive
+* Follow [[Community Guidelines]]
+* Ask for help if needed
+
+[[Category:Help]]`,
     categories: ['Help']
   },
   {
     title: 'Community Guidelines',
     slug: 'community-guidelines',
-    content: communityGuidelinesContent,
+    content: `# Community Guidelines
+
+Rules and guidelines for contributing to the Ballscord Wiki.
+
+## General Rules
+1. **Be respectful** to all users
+2. **Stay on topic** - Keep content relevant
+3. **No vandalism** - Don't damage existing content
+4. **Cite sources** when possible
+5. **Use edit summaries** to explain changes
+
+## Content Standards
+* Write in a neutral tone
+* Keep content appropriate
+* Respect copyright
+* Avoid personal attacks
+
+## Editing Etiquette
+* Make constructive edits
+* Discuss disagreements
+* Be bold but careful
+* Ask moderators for help
+
+## Consequences
+Violations may result in warnings, blocks, or bans.
+
+## Questions?
+Contact moderators in the Discord server or ask on user talk pages.
+
+[[Category:Community]]
+[[Category:Help]]`,
     categories: ['Community', 'Help']
   },
   {
     title: 'Featured Content',
     slug: 'featured-content',
-    content: featuredContentContent,
+    content: `# Featured Content
+
+Showcase of the best articles and content on the Ballscord Wiki.
+
+## Featured Articles
+
+### [[Ballscord]]
+The main article about the Discord server, covering its history, culture, and community.
+
+### [[Ekansh]]
+Biography of the server founder and his various projects.
+
+### [[Server Lore]]
+Comprehensive timeline of major events and drama.
+
+## How to Nominate
+1. Ensure the article is well-written
+2. Check it follows wiki standards
+3. Post on community discussion
+4. Get consensus from editors
+
+## Criteria
+Featured content should be:
+* Accurate and comprehensive
+* Well-written and engaging
+* Properly formatted
+* Representative of quality
+
+[[Category:Featured]]
+[[Category:Community]]`,
     categories: ['Featured', 'Community']
   }
 ]
@@ -477,25 +316,24 @@ const categories = [
   { name: 'Communities', description: 'Online communities and groups' },
   { name: 'Users', description: 'User profiles and information' },
   { name: 'Server Owners', description: 'Discord server owners and administrators' },
-  { name: 'Ballscord', description: 'Everything related to the Ballscord server' },
   { name: 'Musicians', description: 'Musical artists and creators' },
   { name: 'History', description: 'Historical information and timelines' },
-  // NEW CATEGORIES
+  { name: 'Ballscord', description: 'Everything related to the Ballscord server' },
   { name: 'Help', description: 'Help and tutorial pages for using the wiki' },
-  { name: 'Featured', description: 'Featured and highlighted content' }
+  { name: 'Featured', description: 'Featured and highlighted content' },
+  { name: 'Community', description: 'Community guidelines and policies' },
+  { name: 'Main', description: 'Main/homepage content' }
 ]
 
 async function seedData() {
-  console.log('🚀 Starting Ballscord Wiki data seeding (including missing pages)...')
+  console.log('🚀 Starting Ballscord Wiki data seeding with Ballscord as main page...')
 
   try {
-    // Use a proper UUID format instead of placeholder text
-    const adminUserId = 'a37c22fa-7f5d-4e68-afc0-34d093eff609' // Valid UUID format
+    const adminUserId = 'a37c22fa-7f5d-4e68-afc0-34d093eff609'
 
     // 1. Seed categories first
     console.log('📁 Creating categories...')
     for (const category of categories) {
-      // Check if category already exists first
       const { data: existingCategory } = await supabase
         .from('categories')
         .select('id')
@@ -525,7 +363,6 @@ async function seedData() {
     // 2. Seed pages
     console.log('📄 Creating pages...')
     for (const pageData of pages) {
-      // Check if page already exists
       const { data: existingPage } = await supabase
         .from('pages')
         .select('id')
@@ -533,11 +370,26 @@ async function seedData() {
         .single()
       
       if (existingPage) {
-        console.log(`⚠️ Page ${pageData.title} already exists, skipping`)
+        console.log(`⚠️ Page ${pageData.title} already exists, updating content...`)
+        
+        // Update existing page content
+        const { error: updateError } = await supabase
+          .from('pages')
+          .update({
+            title: pageData.title,
+            content: pageData.content
+          })
+          .eq('slug', pageData.slug)
+        
+        if (updateError) {
+          console.error(`Error updating page ${pageData.title}:`, updateError)
+        } else {
+          console.log(`✅ Updated page: ${pageData.title}`)
+        }
         continue
       }
 
-      // Create the page
+      // Create new page
       const { data: page, error: pageError } = await supabase
         .from('pages')
         .insert({
@@ -545,7 +397,7 @@ async function seedData() {
           slug: pageData.slug,
           content: pageData.content,
           created_by: adminUserId,
-          view_count: Math.floor(Math.random() * 100) + 10 // Random initial view count
+          view_count: Math.floor(Math.random() * 100) + 10
         })
         .select()
         .single()
@@ -580,14 +432,16 @@ async function seedData() {
     }
 
     console.log('🎉 Ballscord Wiki data seeding completed successfully!')
-    console.log('📝 All pages including missing ones are now available:')
+    console.log('📝 Main page is now /wiki/ballscord')
+    console.log('📝 Available pages:')
     pages.forEach(page => {
-      console.log(`   - /wiki/${page.slug}`)
+      const isMain = page.slug === 'ballscord' ? ' (MAIN PAGE)' : ''
+      console.log(`   - /wiki/${page.slug}${isMain}`)
     })
     console.log('📝 Next steps:')
-    console.log('   1. Update the admin user ID in your user_profiles table')
-    console.log('   2. Visit your wiki to see the new content')
-    console.log('   3. Test the previously broken links')
+    console.log('   1. Update your navigation to point to /wiki/ballscord')
+    console.log('   2. Test the visual editor improvements')
+    console.log('   3. Verify login prompts work for non-logged users')
 
   } catch (error) {
     console.error('❌ Error during data seeding:', error)
@@ -595,6 +449,6 @@ async function seedData() {
   }
 }
 
-// Run the seeder immediately
-console.log('🚀 Starting Ballscord Wiki data seeding (including missing pages)...')
+// Run the seeder
 seedData()
+*/

@@ -17,21 +17,19 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
   const [selectedBackgroundColor, setSelectedBackgroundColor] = useState('#000000')
   const [fontSize, setFontSize] = useState('14')
   const [fontFamily, setFontFamily] = useState('Verdana')
-  const [showPlaceholder, setShowPlaceholder] = useState(false)
 
   useEffect(() => {
     if (mode === 'visual' && editorRef.current) {
       // Convert markdown to HTML for visual editing
       const htmlContent = markdownToHtml(content)
-      editorRef.current.innerHTML = htmlContent
-      
-      // Show placeholder if content is empty
-      setShowPlaceholder(!content.trim())
+      if (editorRef.current.innerHTML !== htmlContent) {
+        editorRef.current.innerHTML = htmlContent
+      }
     }
   }, [content, mode])
 
   const markdownToHtml = (markdown: string): string => {
-    if (!markdown.trim()) return ''
+    if (!markdown.trim()) return '<p><br></p>'
     
     let html = markdown
     
@@ -53,12 +51,16 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
       return `<a href="/wiki/${slug}" class="${className}" contenteditable="false">${display}</a>`
     })
     
+    // Convert lists
+    html = html.replace(/^\* (.+)$/gm, '<li>$1</li>')
+    html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    
     // Convert line breaks
     html = html.replace(/\n\n/g, '</p><p>')
     html = html.replace(/\n/g, '<br>')
     
     // Wrap in paragraphs if not already wrapped
-    if (html && !html.startsWith('<')) {
+    if (!html.match(/^<[h1-6]|<ul|<ol|<p/)) {
       html = '<p>' + html + '</p>'
     }
     
@@ -69,25 +71,36 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
     let markdown = html
     
     // Convert headings
-    markdown = markdown.replace(/<h1>(.*?)<\/h1>/g, '# $1')
-    markdown = markdown.replace(/<h2>(.*?)<\/h2>/g, '## $1')
-    markdown = markdown.replace(/<h3>(.*?)<\/h3>/g, '### $1')
+    markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/g, '# $1')
+    markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/g, '## $1')
+    markdown = markdown.replace(/<h3[^>]*>(.*?)<\/h3>/g, '### $1')
     
     // Convert bold and italic
-    markdown = markdown.replace(/<strong>(.*?)<\/strong>/g, '**$1**')
-    markdown = markdown.replace(/<em>(.*?)<\/em>/g, '*$1*')
+    markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/g, '**$1**')
+    markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/g, '**$1**')
+    markdown = markdown.replace(/<em[^>]*>(.*?)<\/em>/g, '*$1*')
+    markdown = markdown.replace(/<i[^>]*>(.*?)<\/i>/g, '*$1*')
     
     // Convert wiki links
     markdown = markdown.replace(/<a[^>]*class="wiki-link[^"]*"[^>]*href="\/wiki\/([^"]*)"[^>]*>(.*?)<\/a>/g, '[[$2]]')
     
+    // Convert lists
+    markdown = markdown.replace(/<ul[^>]*>(.*?)<\/ul>/gs, (match, content) => {
+      return content.replace(/<li[^>]*>(.*?)<\/li>/gs, '* $1\n')
+    })
+    
     // Convert paragraphs and breaks
-    markdown = markdown.replace(/<\/p><p>/g, '\n\n')
-    markdown = markdown.replace(/<p>/g, '')
-    markdown = markdown.replace(/<\/p>/g, '')
+    markdown = markdown.replace(/<\/p>\s*<p[^>]*>/g, '\n\n')
+    markdown = markdown.replace(/<p[^>]*>/g, '')
+    markdown = markdown.replace(/<\/p>/g, '\n')
     markdown = markdown.replace(/<br\s*\/?>/g, '\n')
     
     // Clean up HTML tags
     markdown = markdown.replace(/<[^>]*>/g, '')
+    
+    // Clean up extra whitespace
+    markdown = markdown.replace(/\n\n\n+/g, '\n\n')
+    markdown = markdown.trim()
     
     return markdown
   }
@@ -102,35 +115,19 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
       const html = editorRef.current.innerHTML
       const markdown = htmlToMarkdown(html)
       onChange(markdown)
-      
-      // Update placeholder visibility
-      setShowPlaceholder(!html.trim() || html === '<p><br></p>' || html === '<br>')
     }
   }
 
-  const handleEditorFocus = () => {
-    setShowPlaceholder(false)
-    if (editorRef.current && (!editorRef.current.innerHTML.trim() || editorRef.current.innerHTML === '<p><br></p>')) {
-      editorRef.current.innerHTML = '<p></p>'
-      // Set cursor to the paragraph
-      const range = document.createRange()
-      const sel = window.getSelection()
-      if (sel && editorRef.current.firstChild) {
-        range.setStart(editorRef.current.firstChild, 0)
-        range.collapse(true)
-        sel.removeAllRanges()
-        sel.addRange(range)
-      }
-    }
+  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    handleContentChange()
   }
 
-  const handleEditorBlur = () => {
-    if (editorRef.current) {
-      const isEmpty = !editorRef.current.innerHTML.trim() || 
-                     editorRef.current.innerHTML === '<p><br></p>' || 
-                     editorRef.current.innerHTML === '<br>' ||
-                     editorRef.current.innerHTML === '<p></p>'
-      setShowPlaceholder(isEmpty)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Handle Enter key to create proper paragraphs
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      document.execCommand('insertHTML', false, '<br><br>')
+      handleContentChange()
     }
   }
 
@@ -147,7 +144,7 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
       const linkHtml = `<a href="/wiki/${slug}" class="${className}" contenteditable="false">${pageName}</a>`
       
       if (mode === 'visual') {
-        document.execCommand('insertHTML', false, linkHtml)
+        document.execCommand('insertHTML', false, linkHtml + '&nbsp;')
       } else {
         onChange(content + `[[${pageName}]]`)
       }
@@ -164,11 +161,11 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
       const numRows = parseInt(rows)
       const numCols = parseInt(cols)
       
-      let tableHtml = '<table class="wiki-table"><thead><tr>'
+      let tableHtml = '<table class="wiki-table" style="border-collapse: collapse; width: 100%; margin: 15px 0; border: 1px solid #666;"><thead><tr>'
       
       // Header row
       for (let j = 0; j < numCols; j++) {
-        tableHtml += '<th>Header ' + (j + 1) + '</th>'
+        tableHtml += '<th style="border: 1px solid #666; padding: 8px; background: #333; color: #fff;">Header ' + (j + 1) + '</th>'
       }
       tableHtml += '</tr></thead><tbody>'
       
@@ -176,12 +173,12 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
       for (let i = 1; i < numRows; i++) {
         tableHtml += '<tr>'
         for (let j = 0; j < numCols; j++) {
-          tableHtml += '<td>Cell ' + i + ',' + (j + 1) + '</td>'
+          tableHtml += '<td style="border: 1px solid #666; padding: 6px;">Cell ' + i + ',' + (j + 1) + '</td>'
         }
         tableHtml += '</tr>'
       }
       
-      tableHtml += '</tbody></table><p></p>'
+      tableHtml += '</tbody></table><p><br></p>'
       
       if (mode === 'visual') {
         document.execCommand('insertHTML', false, tableHtml)
@@ -196,7 +193,7 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
     const alt = prompt('Enter image description:', 'Image')
     
     if (url) {
-      const imgHtml = `<img src="${url}" alt="${alt}" style="max-width: 100%; height: auto;" />`
+      const imgHtml = `<img src="${url}" alt="${alt}" style="max-width: 100%; height: auto; display: block; margin: 10px 0;" /><p><br></p>`
       
       if (mode === 'visual') {
         document.execCommand('insertHTML', false, imgHtml)
@@ -217,7 +214,6 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
   }
 
   const applyFontSize = () => {
-    // Document.execCommand doesn't support direct font-size, so we use a workaround
     const selection = window.getSelection()
     if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0)
@@ -228,7 +224,6 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
         range.surroundContents(span)
         handleContentChange()
       } catch (e) {
-        // If can't surround, insert at cursor
         span.innerHTML = selection.toString()
         range.deleteContents()
         range.insertNode(span)
@@ -244,11 +239,19 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
   if (mode === 'source') {
     return (
       <div className="editor-container">
-        <div className="editor-toolbar">
-          <button onClick={() => onModeChange('visual')} style={{ fontSize: '10px', background: '#333' }}>
+        <div className="editor-toolbar" style={{ 
+          background: '#333', 
+          border: '1px solid #666', 
+          padding: '8px',
+          display: 'flex',
+          gap: '8px',
+          alignItems: 'center',
+          marginBottom: '10px'
+        }}>
+          <button onClick={() => onModeChange('visual')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
             👁️ Visual Mode
           </button>
-          <div style={{ fontSize: '10px', color: '#ccc', marginLeft: '10px' }}>
+          <div style={{ fontSize: '10px', color: '#ccc' }}>
             Source Editor - Use markdown syntax
           </div>
         </div>
@@ -264,7 +267,8 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
             background: '#fff',
             fontSize: '12px',
             fontFamily: 'Consolas, Monaco, monospace',
-            resize: 'vertical'
+            resize: 'vertical',
+            color: '#000'
           }}
           placeholder="Enter your content using markdown syntax..."
         />
@@ -282,52 +286,34 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
         display: 'flex',
         flexWrap: 'wrap',
         gap: '4px',
-        alignItems: 'center'
+        alignItems: 'center',
+        marginBottom: '10px'
       }}>
         {/* Mode Toggle */}
-        <button onClick={() => onModeChange('source')} style={{ fontSize: '10px', background: '#555' }}>
+        <button onClick={() => onModeChange('source')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
           📝 Source
         </button>
         
         <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
         
         {/* Text Formatting */}
-        <button onClick={() => execCommand('bold')} style={{ fontSize: '10px', fontWeight: 'bold' }}>
+        <button onClick={() => execCommand('bold')} style={{ fontSize: '10px', fontWeight: 'bold', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
           B
         </button>
-        <button onClick={() => execCommand('italic')} style={{ fontSize: '10px', fontStyle: 'italic' }}>
+        <button onClick={() => execCommand('italic')} style={{ fontSize: '10px', fontStyle: 'italic', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
           I
         </button>
-        <button onClick={() => execCommand('underline')} style={{ fontSize: '10px', textDecoration: 'underline' }}>
+        <button onClick={() => execCommand('underline')} style={{ fontSize: '10px', textDecoration: 'underline', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
           U
-        </button>
-        <button onClick={() => execCommand('strikeThrough')} style={{ fontSize: '10px', textDecoration: 'line-through' }}>
-          S
-        </button>
-        
-        <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
-        
-        {/* Alignment */}
-        <button onClick={() => execCommand('justifyLeft')} style={{ fontSize: '10px' }}>
-          ⬅️
-        </button>
-        <button onClick={() => execCommand('justifyCenter')} style={{ fontSize: '10px' }}>
-          ↔️
-        </button>
-        <button onClick={() => execCommand('justifyRight')} style={{ fontSize: '10px' }}>
-          ➡️
-        </button>
-        <button onClick={() => execCommand('justifyFull')} style={{ fontSize: '10px' }}>
-          ↕️
         </button>
         
         <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
         
         {/* Lists */}
-        <button onClick={() => execCommand('insertOrderedList')} style={{ fontSize: '10px' }}>
+        <button onClick={() => execCommand('insertOrderedList')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
           1. List
         </button>
-        <button onClick={() => execCommand('insertUnorderedList')} style={{ fontSize: '10px' }}>
+        <button onClick={() => execCommand('insertUnorderedList')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
           • List
         </button>
         
@@ -336,7 +322,7 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
         {/* Headings */}
         <select 
           onChange={(e) => execCommand('formatBlock', e.target.value)}
-          style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777' }}
+          style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px' }}
         >
           <option value="">Normal</option>
           <option value="h1">Heading 1</option>
@@ -346,79 +332,14 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
         
         <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
         
-        {/* Font Family */}
-        <select 
-          value={fontFamily}
-          onChange={(e) => setFontFamily(e.target.value)}
-          style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777' }}
-        >
-          <option value="Verdana">Verdana</option>
-          <option value="Arial">Arial</option>
-          <option value="Times New Roman">Times</option>
-          <option value="Courier New">Courier</option>
-          <option value="Georgia">Georgia</option>
-        </select>
-        
-        <button onClick={applyFontFamily} style={{ fontSize: '9px' }}>
-          Apply Font
-        </button>
-        
-        {/* Font Size */}
-        <input
-          type="number"
-          value={fontSize}
-          onChange={(e) => setFontSize(e.target.value)}
-          min="8"
-          max="72"
-          style={{ 
-            width: '50px', 
-            fontSize: '10px', 
-            background: '#555', 
-            color: '#fff', 
-            border: '1px solid #777' 
-          }}
-        />
-        <button onClick={applyFontSize} style={{ fontSize: '9px' }}>
-          Size
-        </button>
-        
-        <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
-        
-        {/* Colors */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <label style={{ fontSize: '9px', color: '#ccc' }}>Text:</label>
-          <input
-            type="color"
-            value={selectedColor}
-            onChange={(e) => setSelectedColor(e.target.value)}
-            style={{ width: '20px', height: '20px', border: 'none', cursor: 'pointer' }}
-          />
-          <button onClick={applyTextColor} style={{ fontSize: '9px' }}>
-            Apply
-          </button>
-          
-          <label style={{ fontSize: '9px', color: '#ccc', marginLeft: '8px' }}>BG:</label>
-          <input
-            type="color"
-            value={selectedBackgroundColor}
-            onChange={(e) => setSelectedBackgroundColor(e.target.value)}
-            style={{ width: '20px', height: '20px', border: 'none', cursor: 'pointer' }}
-          />
-          <button onClick={applyBackgroundColor} style={{ fontSize: '9px' }}>
-            Apply
-          </button>
-        </div>
-        
-        <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
-        
         {/* Wiki-specific Tools */}
-        <button onClick={insertWikiLink} style={{ fontSize: '10px', background: '#006600' }}>
+        <button onClick={insertWikiLink} style={{ fontSize: '10px', background: '#006600', color: '#fff', border: '1px solid #008800', padding: '4px 8px' }}>
           🔗 Link Page
         </button>
-        <button onClick={insertTable} style={{ fontSize: '10px', background: '#660066' }}>
+        <button onClick={insertTable} style={{ fontSize: '10px', background: '#660066', color: '#fff', border: '1px solid #880088', padding: '4px 8px' }}>
           📊 Table
         </button>
-        <button onClick={insertImage} style={{ fontSize: '10px', background: '#666600' }}>
+        <button onClick={insertImage} style={{ fontSize: '10px', background: '#666600', color: '#fff', border: '1px solid #888800', padding: '4px 8px' }}>
           🖼️ Image
         </button>
         
@@ -426,108 +347,84 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
         
         {/* Special Inserts */}
         <button 
-          onClick={() => execCommand('insertHTML', '<hr style="border: 1px solid #666; margin: 20px 0;">')}
-          style={{ fontSize: '10px' }}
+          onClick={() => execCommand('insertHTML', '<hr style="border: 1px solid #666; margin: 20px 0;"><p><br></p>')}
+          style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}
         >
           ➖ Line
         </button>
         <button 
-          onClick={() => execCommand('insertHTML', '<blockquote style="border-left: 3px solid #666; margin: 15px 0; padding: 10px 15px; background: #222; font-style: italic;">Quote text here</blockquote>')}
-          style={{ fontSize: '10px' }}
+          onClick={() => execCommand('insertHTML', '<blockquote style="border-left: 3px solid #666; margin: 15px 0; padding: 10px 15px; background: #f5f5f5; font-style: italic; color: #000;">Quote text here</blockquote><p><br></p>')}
+          style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}
         >
           💬 Quote
-        </button>
-        <button 
-          onClick={() => execCommand('insertHTML', '<code style="background: #333; padding: 2px 4px; border-radius: 3px; font-family: monospace;">code</code>')}
-          style={{ fontSize: '10px' }}
-        >
-          💻 Code
         </button>
         
         <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
         
         {/* Undo/Redo */}
-        <button onClick={() => execCommand('undo')} style={{ fontSize: '10px' }}>
+        <button onClick={() => execCommand('undo')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
           ↶ Undo
         </button>
-        <button onClick={() => execCommand('redo')} style={{ fontSize: '10px' }}>
+        <button onClick={() => execCommand('redo')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
           ↷ Redo
         </button>
       </div>
       
-      {/* Visual Editor */}
-      <div style={{ position: 'relative' }}>
-        <div
-          ref={editorRef}
-          contentEditable
-          onInput={handleContentChange}
-          onPaste={handleContentChange}
-          onKeyUp={handleContentChange}
-          onFocus={handleEditorFocus}
-          onBlur={handleEditorBlur}
-          style={{
-            width: '100%',
-            minHeight: '400px',
-            padding: '15px',
-            border: '1px inset #c0c0c0',
-            background: '#fff',
-            color: '#000',
-            fontSize: '14px',
-            fontFamily: 'Verdana, sans-serif',
-            lineHeight: '1.6',
-            outline: 'none',
-            overflow: 'auto'
-          }}
-          suppressContentEditableWarning={true}
-        />
-        
-        {/* Placeholder overlay */}
-        {showPlaceholder && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '16px',
-              left: '16px',
-              color: '#999',
-              fontSize: '14px',
-              pointerEvents: 'none',
-              fontFamily: 'Verdana, sans-serif'
-            }}
-          >
-            Start typing your content...
-          </div>
-        )}
-      </div>
+      {/* Visual Editor - No white container, integrated styling */}
+      <div
+        ref={editorRef}
+        contentEditable
+        onInput={handleInput}
+        onKeyDown={handleKeyDown}
+        onPaste={handleContentChange}
+        style={{
+          minHeight: '400px',
+          padding: '15px',
+          border: '2px solid #666',
+          background: '#181818', // Match the wiki background
+          color: '#fff', // White text like the rest of the wiki
+          fontSize: '14px',
+          fontFamily: 'Verdana, sans-serif',
+          lineHeight: '1.6',
+          outline: 'none',
+          overflow: 'auto',
+          borderRadius: '0', // Keep it retro
+          boxShadow: 'inset 1px 1px 2px rgba(0,0,0,0.3)' // Slight inset shadow for depth
+        }}
+        suppressContentEditableWarning={true}
+      />
       
       {/* Helper Text */}
       <div style={{ 
         fontSize: '10px', 
         color: '#888', 
         marginTop: '5px',
-        padding: '5px'
+        padding: '5px',
+        background: '#222',
+        border: '1px solid #555'
       }}>
         💡 <strong>Tips:</strong> 
         • Select text and use toolbar buttons 
         • Use "Link Page" to link to other wiki pages 
         • Switch to Source mode for advanced editing 
-        • All formatting is automatically saved
+        • Press Enter twice for new paragraphs
       </div>
       
       <style jsx>{`
         .editor-container .wiki-link {
-          color: #0066cc;
+          color: #6699ff !important;
           text-decoration: none;
-          border-bottom: 1px dotted #0066cc;
-          background: #e6f3ff;
+          border-bottom: 1px dotted #6699ff;
+          background: rgba(102, 153, 255, 0.1);
           padding: 1px 3px;
           border-radius: 2px;
         }
         
         .editor-container .wiki-link-new {
-          color: #cc0000;
+          color: #ff6666 !important;
           text-decoration: none;
-          border-bottom: 1px dotted #cc0000;
-          background: #ffe6e6;
+          border-bottom: 1px dotted #ff6666;
+          background: rgba(255, 102, 102, 0.1);
           padding: 1px 3px;
           border-radius: 2px;
         }
@@ -537,43 +434,32 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
           opacity: 0.8;
         }
         
-        .editor-container .wiki-table {
-          border-collapse: collapse;
-          width: 100%;
-          margin: 15px 0;
-          border: 1px solid #ccc;
-        }
-        
-        .editor-container .wiki-table th,
-        .editor-container .wiki-table td {
-          border: 1px solid #ccc;
-          padding: 8px;
-          text-align: left;
-        }
-        
-        .editor-container .wiki-table th {
-          background: #f0f0f0;
-          font-weight: bold;
-        }
-        
-        .editor-container .wiki-table tr:nth-child(even) {
-          background: #f9f9f9;
-        }
-        
         .editor-container h1 {
-          color: #cc0000;
-          border-bottom: 2px solid #cc0000;
+          color: #ff6666 !important;
+          border-bottom: 2px solid #ff6666;
           padding-bottom: 5px;
+          margin: 20px 0 10px 0;
         }
         
         .editor-container h2 {
-          color: #cc0000;
-          border-bottom: 1px solid #cc0000;
+          color: #ff6666 !important;
+          border-bottom: 1px solid #ff6666;
           padding-bottom: 3px;
+          margin: 20px 0 10px 0;
         }
         
         .editor-container h3 {
-          color: #cc0000;
+          color: #ff6666 !important;
+          margin: 20px 0 10px 0;
+        }
+        
+        .editor-container ul, .editor-container ol {
+          margin: 10px 0;
+          padding-left: 25px;
+        }
+        
+        .editor-container li {
+          margin-bottom: 5px;
         }
         
         .editor-container blockquote {
@@ -582,14 +468,19 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
           padding: 10px 15px;
           background: #f5f5f5;
           font-style: italic;
+          color: #000;
         }
         
-        .editor-container code {
-          background: #f0f0f0;
-          padding: 2px 4px;
-          border-radius: 3px;
-          font-family: Consolas, Monaco, monospace;
-          font-size: 90%;
+        .editor-container p {
+          margin: 10px 0;
+        }
+        
+        .editor-container strong {
+          font-weight: bold;
+        }
+        
+        .editor-container em {
+          font-style: italic;
         }
         
         .editor-container img {

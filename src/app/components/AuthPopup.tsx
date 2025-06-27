@@ -1,12 +1,30 @@
+// src/app/components/AuthPopup.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { User } from '@supabase/supabase-js'
 
-export default function AuthPopup() {
-  const [user, setUser] = useState<any>(null)
-  const [userProfile, setUserProfile] = useState<any>(null)
-  const [showPopup, setShowPopup] = useState(false)
+interface AuthPopupProps {
+  isPopupMode?: boolean
+  onClose?: () => void
+}
+
+interface UserProfile {
+  id: string
+  username: string | null
+  display_name: string | null
+  is_admin: boolean
+  is_moderator: boolean
+  bio: string | null
+  avatar_url: string | null
+  created_at: string
+  edit_count: number
+}
+
+export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupProps) {
+  const [user, setUser] = useState<User | null>(null)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [activeTab, setActiveTab] = useState<'signin' | 'signup'>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -15,9 +33,8 @@ export default function AuthPopup() {
   const [mounted, setMounted] = useState(false)
 
   // Create or get user profile
-  const createOrGetUserProfile = async (authUser: any) => {
+  const createOrGetUserProfile = async (authUser: User): Promise<UserProfile | null> => {
     try {
-      // First, check if user profile already exists
       const { data: existingProfile, error: fetchError } = await supabase
         .from('user_profiles')
         .select('*')
@@ -30,8 +47,7 @@ export default function AuthPopup() {
         return existingProfile
       }
 
-      // Extract display name from user metadata
-      const getDisplayName = (user: any) => {
+      const getDisplayName = (user: User) => {
         if (user.user_metadata?.full_name) return user.user_metadata.full_name
         if (user.user_metadata?.name) return user.user_metadata.name
         if (user.user_metadata?.display_name) return user.user_metadata.display_name
@@ -39,23 +55,22 @@ export default function AuthPopup() {
         return 'User'
       }
 
-      const getUsername = (user: any) => {
+      const getUsername = (user: User) => {
         if (user.user_metadata?.preferred_username) return user.user_metadata.preferred_username
         if (user.user_metadata?.user_name) return user.user_metadata.user_name
         if (user.email) return user.email.split('@')[0]
         return `user_${Date.now()}`
       }
 
-      // Create new user profile
       console.log('👤 Creating new user profile for:', authUser.id)
       const { data: newProfile, error: createError } = await supabase
         .from('user_profiles')
         .insert({
-          id: authUser.id, // Use the same ID as the auth user
+          id: authUser.id,
           username: getUsername(authUser),
           display_name: getDisplayName(authUser),
           avatar_url: authUser.user_metadata?.avatar_url || null,
-          is_admin: false, // New users are not admin by default
+          is_admin: false,
           is_moderator: false,
           bio: null,
           edit_count: 0
@@ -78,7 +93,6 @@ export default function AuthPopup() {
     }
   }
 
-  // Load user on page load or auth state change
   useEffect(() => {
     setMounted(true)
     
@@ -94,14 +108,16 @@ export default function AuthPopup() {
       
       if (session?.user) {
         setUser(session.user)
-        
-        // Create or get user profile for any sign in/up event
         await createOrGetUserProfile(session.user)
-        
-        setShowPopup(false) // Hide popup after login
         setMessage('')
         
-        // Show success message based on event type
+        // Close popup after successful login
+        if (isPopupMode && onClose) {
+          setTimeout(() => {
+            onClose()
+          }, 1000)
+        }
+        
         if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
           setMessage('Signed in successfully!')
         }
@@ -115,9 +131,8 @@ export default function AuthPopup() {
     })
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [isPopupMode, onClose])
 
-  // Trigger Supabase OAuth login
   const loginWithProvider = async (provider: 'google' | 'discord') => {
     setLoading(true)
     setMessage('')
@@ -140,7 +155,6 @@ export default function AuthPopup() {
     setLoading(false)
   }
 
-  // Handle email/password authentication
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) {
@@ -170,7 +184,6 @@ export default function AuthPopup() {
         } else if (result.data?.user && !result.data.session) {
           setMessage('Check your email for verification link!')
         } else if (result.data?.user && result.data.session) {
-          // User is immediately signed in (email confirmation disabled)
           await createOrGetUserProfile(result.data.user)
           setMessage('Account created successfully!')
         }
@@ -204,173 +217,185 @@ export default function AuthPopup() {
     setMessage('')
   }
 
-  // Extract username from email or use display name
-  const getDisplayName = (user: any) => {
-    // First try to use the user profile display name
+  const getDisplayName = (user: User) => {
     if (userProfile?.display_name) return userProfile.display_name
     if (userProfile?.username) return userProfile.username
-    
-    // Fallback to auth user metadata
     if (user.user_metadata?.full_name) return user.user_metadata.full_name
     if (user.user_metadata?.name) return user.user_metadata.name
     if (user.email) return user.email.split('@')[0]
     return 'User'
   }
 
-  // Prevent hydration mismatch
   if (!mounted) {
-    return <a href="#">Login</a>
+    return <span>Login</span>
   }
 
+  // If in popup mode, show the auth form directly
+  if (isPopupMode) {
+    return (
+      <div style={{ width: '100%' }}>
+        {/* Tab buttons */}
+        <div style={{ display: 'flex', marginBottom: '8px' }}>
+          <button 
+            style={{
+              flex: 1,
+              padding: '4px 8px',
+              fontSize: '11px',
+              background: activeTab === 'signin' ? '#e0e0e0' : '#c0c0c0',
+              border: '1px outset #c0c0c0',
+              cursor: 'pointer',
+              marginRight: '2px'
+            }}
+            onClick={() => {
+              setActiveTab('signin')
+              setMessage('')
+            }}
+          >
+            Sign In
+          </button>
+          <button 
+            style={{
+              flex: 1,
+              padding: '4px 8px',
+              fontSize: '11px',
+              background: activeTab === 'signup' ? '#e0e0e0' : '#c0c0c0',
+              border: '1px outset #c0c0c0',
+              cursor: 'pointer'
+            }}
+            onClick={() => {
+              setActiveTab('signup')
+              setMessage('')
+            }}
+          >
+            Sign Up
+          </button>
+        </div>
+
+        {/* OAuth buttons */}
+        <button
+          onClick={() => loginWithProvider('google')}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '4px 8px',
+            marginBottom: '4px',
+            fontSize: '11px',
+            background: '#c0c0c0',
+            border: '1px outset #c0c0c0',
+            cursor: 'pointer'
+          }}
+        >
+          {loading ? 'Loading...' : '🔍 Continue with Google'}
+        </button>
+
+        <button
+          onClick={() => loginWithProvider('discord')}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '4px 8px',
+            marginBottom: '8px',
+            fontSize: '11px',
+            background: '#c0c0c0',
+            border: '1px outset #c0c0c0',
+            cursor: 'pointer'
+          }}
+        >
+          {loading ? 'Loading...' : '🎮 Continue with Discord'}
+        </button>
+
+        <div style={{
+          textAlign: 'center',
+          margin: '8px 0',
+          fontSize: '9px',
+          color: '#808080'
+        }}>
+          ── OR ──
+        </div>
+
+        {/* Email/Password form */}
+        <form onSubmit={handleEmailAuth}>
+          <input
+            type="email"
+            placeholder="Email address"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
+            required
+            style={{
+              width: '100%',
+              padding: '2px 4px',
+              marginBottom: '8px',
+              border: '1px inset #c0c0c0',
+              fontSize: '11px',
+              boxSizing: 'border-box'
+            }}
+          />
+          <input
+            type="password"
+            placeholder="Password (min 6 characters)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+            minLength={6}
+            required
+            style={{
+              width: '100%',
+              padding: '2px 4px',
+              marginBottom: '8px',
+              border: '1px inset #c0c0c0',
+              fontSize: '11px',
+              boxSizing: 'border-box'
+            }}
+          />
+          <button 
+            type="submit" 
+            disabled={loading || !email || !password}
+            style={{
+              width: '100%',
+              padding: '4px 8px',
+              fontSize: '11px',
+              background: '#c0c0c0',
+              border: '1px outset #c0c0c0',
+              cursor: 'pointer'
+            }}
+          >
+            {loading ? 'Loading...' : (activeTab === 'signin' ? '✅ Sign In' : '📝 Sign Up')}
+          </button>
+        </form>
+
+        {/* Message display */}
+        {message && (
+          <div style={{ 
+            fontSize: '10px', 
+            color: message.includes('Check your email') || message.includes('successfully') ? '#008000' : '#800000',
+            marginTop: '8px',
+            padding: '4px',
+            border: '1px inset #c0c0c0',
+            background: '#f0f0f0'
+          }}>
+            {message}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Regular nav link mode
   return (
     <>
-      {/* Login/Logout nav link */}
       {!user ? (
-        <a href="#" onClick={(e) => {
-          e.preventDefault()
-          setShowPopup(!showPopup)
-          setMessage('')
-        }}>
+        <span style={{ color: '#80001c', fontWeight: 'bold', cursor: 'pointer' }}>
           Login
-        </a>
+        </span>
       ) : (
         <span className="user-info">
           {getDisplayName(user)}
           {userProfile?.is_admin && <span style={{ color: '#ff6666' }}> [Admin]</span>}
           {userProfile?.is_moderator && !userProfile?.is_admin && <span style={{ color: '#ffaa00' }}> [Mod]</span>}
           {' | '}
-          <a href="#" onClick={(e) => { e.preventDefault(); logout() }}>Logout</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); logout() }} style={{ color: '#80001c' }}>Logout</a>
         </span>
-      )}
-
-      {/* Windows 98 style floating popup */}
-      {showPopup && (
-        <div className="auth-popup-backdrop" onClick={(e) => {
-          // Close popup when clicking backdrop
-          if (e.target === e.currentTarget) {
-            setShowPopup(false)
-          }
-        }}>
-          <div className="auth-popup" onClick={(e) => e.stopPropagation()}>
-            <div className="auth-popup-header">
-              <span>🔐 User Authentication</span>
-              <button 
-                className="auth-popup-close"
-                onClick={() => setShowPopup(false)}
-                title="Close"
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="auth-popup-content">
-              {/* Tab buttons */}
-              <div className="auth-tab-buttons">
-                <button 
-                  className={`auth-tab-button ${activeTab === 'signin' ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveTab('signin')
-                    setMessage('')
-                  }}
-                >
-                  Sign In
-                </button>
-                <button 
-                  className={`auth-tab-button ${activeTab === 'signup' ? 'active' : ''}`}
-                  onClick={() => {
-                    setActiveTab('signup')
-                    setMessage('')
-                  }}
-                >
-                  Sign Up
-                </button>
-              </div>
-
-              {/* OAuth buttons */}
-              <button
-                onClick={() => loginWithProvider('google')}
-                disabled={loading}
-                className="auth-form button"
-                style={{ marginBottom: '4px' }}
-              >
-                {loading ? 'Loading...' : '🔍 Continue with Google'}
-              </button>
-
-              <button
-                onClick={() => loginWithProvider('discord')}
-                disabled={loading}
-                className="auth-form button"
-                style={{ marginBottom: '8px' }}
-              >
-                {loading ? 'Loading...' : '🎮 Continue with Discord'}
-              </button>
-
-              <div className="auth-divider">
-                ── OR ──
-              </div>
-
-              {/* Email/Password form */}
-              <form onSubmit={handleEmailAuth} className="auth-form">
-                <input
-                  type="email"
-                  placeholder="Email address"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading}
-                  required
-                />
-                <input
-                  type="password"
-                  placeholder="Password (min 6 characters)"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading}
-                  minLength={6}
-                  required
-                />
-                <button type="submit" disabled={loading || !email || !password}>
-                  {loading ? 'Loading...' : (activeTab === 'signin' ? '✅ Sign In' : '📝 Sign Up')}
-                </button>
-              </form>
-
-              {/* Message display */}
-              {message && (
-                <div style={{ 
-                  fontSize: '10px', 
-                  color: message.includes('Check your email') || message.includes('successfully') ? '#008000' : '#800000',
-                  marginTop: '8px',
-                  padding: '4px',
-                  border: '1px inset #c0c0c0',
-                  background: '#f0f0f0'
-                }}>
-                  {message}
-                </div>
-              )}
-
-              {/* Debug info for development */}
-              {process.env.NODE_ENV === 'development' && user && (
-                <div style={{ 
-                  fontSize: '9px', 
-                  color: '#666',
-                  marginTop: '8px',
-                  padding: '4px',
-                  border: '1px solid #ddd',
-                  background: '#f9f9f9'
-                }}>
-                  <strong>Debug:</strong><br/>
-                  User ID: {user.id}<br/>
-                  Profile: {userProfile ? '✅' : '❌'}<br/>
-                  {userProfile && (
-                    <>
-                      Username: {userProfile.username}<br/>
-                      Admin: {userProfile.is_admin ? 'Yes' : 'No'}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       )}
     </>
   )
