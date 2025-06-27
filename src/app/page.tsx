@@ -1,5 +1,5 @@
 import WikiEditor from '@/app/components/WikiEditor'
-
+import AuthPopup from '@/app/components/AuthPopup'
 import '@/app/globals.css' // Import your retro MySpace-style CSS
 
 export default function HomePage() {
@@ -18,7 +18,7 @@ export default function HomePage() {
         <a href="#">Home</a>
         <a href="#">Articles</a>
         <a href="#">Recent Edits</a>
-        <a href="#">Login</a>
+         <AuthPopup /> {/* 👈 shows login buttons / username form / "Logged in as" */}
       </nav>
 
       <WikiEditor />
