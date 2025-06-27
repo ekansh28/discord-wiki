@@ -7,7 +7,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "seed": "tsx scripts/seed-ballscord-data.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.2",
@@ -23,6 +24,7 @@
     "@types/node": "^20.19.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "critters": "^0.0.24",
     "eslint": "^9",
     "eslint-config-next": "15.3.4",
     "tailwindcss": "^4",
