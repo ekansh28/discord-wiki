@@ -1,135 +1,249 @@
-// lib/wiki-api.ts
+// lib/enhanced-wiki-api.ts
 import { supabase } from './supabase'
 import { Page, PageRevision, UserProfile, Category, PendingChange } from '@/types/wiki'
 import { slugify } from './wiki-utils'
 
-export class WikiAPI {
-  // Pages
+// Simple in-memory cache
+class WikiCache {
+  private cache = new Map<string, { data: any; timestamp: number; ttl: number }>()
+  
+  set(key: string, data: any, ttlSeconds = 300) { // 5 minutes default
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl: ttlSeconds * 1000
+    })
+  }
+  
+  get(key: string) {
+    const cached = this.cache.get(key)
+    if (!cached) return null
+    
+    if (Date.now() - cached.timestamp > cached.ttl) {
+      this.cache.delete(key)
+      return null
+    }
+    
+    return cached.data
+  }
+  
+  invalidate(pattern: string) {
+    for (const key of this.cache.keys()) {
+      if (key.includes(pattern)) {
+        this.cache.delete(key)
+      }
+    }
+  }
+  
+  clear() {
+    this.cache.clear()
+  }
+}
+
+const cache = new WikiCache()
+
+export class EnhancedWikiAPI {
+  // Fast page loading with caching
   static async getPage(slug: string): Promise<Page | null> {
-    const { data, error } = await supabase
-      .from('pages')
-      .select(`
-        *,
-        categories:page_categories(
-          category:categories(*)
-        )
-      `)
-      .eq('slug', slug)
-      .single()
+    const cacheKey = `page:${slug}`
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
 
-    if (error || !data) return null
+    try {
+      const { data, error } = await supabase
+        .from('pages')
+        .select('*')
+        .eq('slug', slug)
+        .single()
 
-    // Increment view count
-    await supabase
-      .from('pages')
-      .update({ view_count: data.view_count + 1 })
-      .eq('id', data.id)
+      if (error || !data) return null
 
-    return {
-      ...data,
-      categories: data.categories?.map((pc: any) => pc.category) || []
+      // Increment view count asynchronously
+      supabase
+        .from('pages')
+        .update({ view_count: data.view_count + 1 })
+        .eq('id', data.id)
+        .then(() => {
+          // Invalidate cache after view count update
+          cache.invalidate(`page:${slug}`)
+        })
+
+      // Cache the result
+      cache.set(cacheKey, data, 180) // 3 minutes
+      return data
+    } catch (error) {
+      console.error('Error loading page:', error)
+      return null
     }
   }
 
-  static async getAllPages(limit = 50, offset = 0): Promise<Page[]> {
-    const { data, error } = await supabase
-      .from('pages')
-      .select('*')
-      .order('title')
-      .range(offset, offset + limit - 1)
+  // Batch load multiple pages
+  static async getPages(slugs: string[]): Promise<Page[]> {
+    const results: Page[] = []
+    const toFetch: string[] = []
 
-    if (error) throw error
-    return data || []
+    // Check cache first
+    for (const slug of slugs) {
+      const cached = cache.get(`page:${slug}`)
+      if (cached) {
+        results.push(cached)
+      } else {
+        toFetch.push(slug)
+      }
+    }
+
+    // Fetch uncached pages in batch
+    if (toFetch.length > 0) {
+      const { data, error } = await supabase
+        .from('pages')
+        .select('*')
+        .in('slug', toFetch)
+
+      if (!error && data) {
+        for (const page of data) {
+          cache.set(`page:${page.slug}`, page, 180)
+          results.push(page)
+        }
+      }
+    }
+
+    return results
   }
 
+  // Fast page search with caching
   static async searchPages(query: string): Promise<Page[]> {
+    if (!query.trim()) return []
+    
+    const cacheKey = `search:${query.toLowerCase()}`
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
+
     const { data, error } = await supabase
       .from('pages')
-      .select('*')
+      .select('id, title, slug')
       .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
       .order('title')
       .limit(20)
 
-    if (error) throw error
+    if (error) return []
+    
+    cache.set(cacheKey, data || [], 120) // 2 minutes
     return data || []
   }
 
-  static async createPage(title: string, content: string, editSummary: string, userId: string): Promise<Page> {
-    const slug = slugify(title)
+  // Get all page slugs for link validation (cached)
+  static async getAllPageSlugs(): Promise<string[]> {
+    const cacheKey = 'all-page-slugs'
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
 
-    // Check if page already exists
-    const existing = await this.getPage(slug)
-    if (existing) {
-      throw new Error('Page already exists')
-    }
-
-    // Create page
-    const { data: page, error: pageError } = await supabase
+    const { data, error } = await supabase
       .from('pages')
-      .insert({
-        title,
-        slug,
-        content,
-        created_by: userId
-      })
-      .select()
-      .single()
+      .select('slug')
 
-    if (pageError) throw pageError
-
-    // Create initial revision
-    await this.createRevision(page.id, title, content, editSummary, userId, true)
-
-    return page
+    if (error) return []
+    
+    const slugs = data?.map(p => p.slug) || []
+    cache.set(cacheKey, slugs, 300) // 5 minutes
+    return slugs
   }
 
-  static async updatePage(
-    pageId: string, 
-    title: string, 
-    content: string, 
-    editSummary: string, 
+  // Create or update page
+  static async savePage(
+    slug: string,
+    title: string,
+    content: string,
+    editSummary: string,
     userId: string,
     isAdmin = false
-  ): Promise<void> {
-    const slug = slugify(title)
+  ): Promise<{ success: boolean; needsApproval: boolean; error?: string }> {
+    try {
+      // Check if page exists
+      let existingPage = await this.getPage(slug)
+      const isNewPage = !existingPage
 
-    // Get current user profile to check admin status
-    const profile = await this.getUserProfile(userId)
-    const canDirectEdit = isAdmin || profile?.is_admin || profile?.is_moderator
+      if (isNewPage) {
+        // Create new page
+        const { data: newPage, error } = await supabase
+          .from('pages')
+          .insert({
+            title,
+            slug,
+            content,
+            created_by: userId
+          })
+          .select()
+          .single()
 
-    if (canDirectEdit) {
-      // Admin/moderator can edit directly
-      await supabase
-        .from('pages')
-        .update({ title, slug, content })
-        .eq('id', pageId)
+        if (error) throw error
+        existingPage = newPage
+      }
 
-      await this.createRevision(pageId, title, content, editSummary, userId, true)
-    } else {
-      // Regular users create pending changes
-      const revisionId = await this.createRevision(pageId, title, content, editSummary, userId, false)
-      
-      await supabase
-        .from('pending_changes')
-        .insert({
-          page_id: pageId,
-          revision_id: revisionId,
-          status: 'pending'
-        })
+      if (!existingPage) throw new Error('Failed to create page')
+
+      // Get user profile
+      const userProfile = await this.getUserProfile(userId)
+      const canDirectEdit = isAdmin || userProfile?.is_admin || userProfile?.is_moderator
+
+      // Create revision
+      const revisionData = {
+        page_id: existingPage.id,
+        title,
+        content,
+        edit_summary: editSummary,
+        created_by: userId,
+        revision_number: await this.getNextRevisionNumber(existingPage.id),
+        is_approved: canDirectEdit,
+        approved_by: canDirectEdit ? userId : null,
+        approved_at: canDirectEdit ? new Date().toISOString() : null
+      }
+
+      const { data: revision, error: revError } = await supabase
+        .from('page_revisions')
+        .insert(revisionData)
+        .select()
+        .single()
+
+      if (revError) throw revError
+
+      if (canDirectEdit) {
+        // Update page directly
+        await supabase
+          .from('pages')
+          .update({ title, slug, content })
+          .eq('id', existingPage.id)
+      } else {
+        // Create pending change
+        await supabase
+          .from('pending_changes')
+          .insert({
+            page_id: existingPage.id,
+            revision_id: revision.id,
+            status: 'pending'
+          })
+      }
+
+      // Invalidate cache
+      cache.invalidate(slug)
+      cache.invalidate('all-page-slugs')
+      cache.invalidate('search:')
+
+      return {
+        success: true,
+        needsApproval: !canDirectEdit
+      }
+    } catch (error: any) {
+      return {
+        success: false,
+        needsApproval: false,
+        error: error.message
+      }
     }
   }
 
-  // Page Revisions
-  static async createRevision(
-    pageId: string, 
-    title: string, 
-    content: string, 
-    editSummary: string, 
-    userId: string,
-    isApproved = false
-  ): Promise<string> {
-    // Get next revision number
-    const { data: latestRevision } = await supabase
+  // Get next revision number
+  private static async getNextRevisionNumber(pageId: string): Promise<number> {
+    const { data } = await supabase
       .from('page_revisions')
       .select('revision_number')
       .eq('page_id', pageId)
@@ -137,62 +251,15 @@ export class WikiAPI {
       .limit(1)
       .single()
 
-    const revisionNumber = (latestRevision?.revision_number || 0) + 1
-
-    const { data, error } = await supabase
-      .from('page_revisions')
-      .insert({
-        page_id: pageId,
-        title,
-        content,
-        edit_summary: editSummary,
-        created_by: userId,
-        revision_number: revisionNumber,
-        is_approved: isApproved,
-        approved_by: isApproved ? userId : null,
-        approved_at: isApproved ? new Date().toISOString() : null
-      })
-      .select('id')
-      .single()
-
-    if (error) throw error
-
-    // Update user edit count
-    await supabase.rpc('increment_edit_count', { user_id: userId })
-
-    return data.id
+    return (data?.revision_number || 0) + 1
   }
 
-  static async getPageRevisions(pageId: string): Promise<PageRevision[]> {
-    const { data, error } = await supabase
-      .from('page_revisions')
-      .select(`
-        *,
-        author:user_profiles(*)
-      `)
-      .eq('page_id', pageId)
-      .order('revision_number', { ascending: false })
-
-    if (error) throw error
-    return data || []
-  }
-
-  static async getRevision(revisionId: string): Promise<PageRevision | null> {
-    const { data, error } = await supabase
-      .from('page_revisions')
-      .select(`
-        *,
-        author:user_profiles(*)
-      `)
-      .eq('id', revisionId)
-      .single()
-
-    if (error) return null
-    return data
-  }
-
-  // User Profiles
+  // Fast user profile loading
   static async getUserProfile(userId: string): Promise<UserProfile | null> {
+    const cacheKey = `user:${userId}`
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
+
     const { data, error } = await supabase
       .from('user_profiles')
       .select('*')
@@ -200,99 +267,197 @@ export class WikiAPI {
       .single()
 
     if (error) return null
+    
+    cache.set(cacheKey, data, 600) // 10 minutes
     return data
   }
 
-  static async updateUserProfile(userId: string, updates: Partial<UserProfile>): Promise<void> {
-    const { error } = await supabase
-      .from('user_profiles')
-      .update(updates)
-      .eq('id', userId)
+  // Get page revisions with caching
+  static async getPageRevisions(pageId: string, limit = 10): Promise<PageRevision[]> {
+    const cacheKey = `revisions:${pageId}:${limit}`
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
 
-    if (error) throw error
+    const { data, error } = await supabase
+      .from('page_revisions')
+      .select('*')
+      .eq('page_id', pageId)
+      .eq('is_approved', true)
+      .order('revision_number', { ascending: false })
+      .limit(limit)
+
+    if (error) return []
+
+    // Fetch authors in batch
+    const userIds = [...new Set(data?.map(r => r.created_by).filter(Boolean))]
+    const authors = await this.getBatchUserProfiles(userIds)
+    
+    const revisionsWithAuthors = data?.map(revision => ({
+      ...revision,
+      author: authors.find(a => a.id === revision.created_by)
+    })) || []
+
+    cache.set(cacheKey, revisionsWithAuthors, 300)
+    return revisionsWithAuthors
   }
 
-  // Categories
+  // Batch load user profiles
+  static async getBatchUserProfiles(userIds: string[]): Promise<UserProfile[]> {
+    if (userIds.length === 0) return []
+
+    const cached: UserProfile[] = []
+    const toFetch: string[] = []
+
+    for (const id of userIds) {
+      const cachedUser = cache.get(`user:${id}`)
+      if (cachedUser) {
+        cached.push(cachedUser)
+      } else {
+        toFetch.push(id)
+      }
+    }
+
+    if (toFetch.length > 0) {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .in('id', toFetch)
+
+      if (data) {
+        for (const user of data) {
+          cache.set(`user:${user.id}`, user, 600)
+          cached.push(user)
+        }
+      }
+    }
+
+    return cached
+  }
+
+  // Categories with caching
   static async getAllCategories(): Promise<Category[]> {
+    const cacheKey = 'all-categories'
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
+
     const { data, error } = await supabase
       .from('categories')
-      .select(`
-        *,
-        page_count:page_categories(count)
-      `)
+      .select('*')
       .order('name')
 
-    if (error) throw error
-    return data?.map(cat => ({
-      ...cat,
-      page_count: cat.page_count?.[0]?.count || 0
-    })) || []
-  }
+    if (error) return []
 
-  static async getCategoryPages(categorySlug: string): Promise<Page[]> {
-    const { data, error } = await supabase
-      .from('page_categories')
-      .select(`
-        page:pages(*)
-      `)
-      .eq('category.slug', categorySlug)
-
-    if (error) throw error
-    return data?.map((pc: any) => pc.page as Page).filter(Boolean) || []
-  }
-
-  static async createCategory(name: string, description: string, userId: string): Promise<Category> {
-    const { data, error } = await supabase
-      .from('categories')
-      .insert({
-        name,
-        description,
-        created_by: userId
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-    return data
-  }
-
-  // Admin Functions
-  static async getPendingChanges(): Promise<PendingChange[]> {
-    const { data, error } = await supabase
-      .from('pending_changes')
-      .select(`
-        *,
-        page:pages(*),
-        revision:page_revisions(
-          *,
-          author:user_profiles(*)
-        )
-      `)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
+    cache.set(cacheKey, data || [], 300)
     return data || []
   }
 
+  // Recent changes with caching
+  static async getRecentChanges(limit = 50): Promise<PageRevision[]> {
+    const cacheKey = `recent-changes:${limit}`
+    const cached = cache.get(cacheKey)
+    if (cached) return cached
+
+    const { data, error } = await supabase
+      .from('page_revisions')
+      .select('*, page_id')
+      .eq('is_approved', true)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) return []
+
+    // Batch fetch pages and users
+    const pageIds = [...new Set(data?.map(r => r.page_id))]
+    const userIds = [...new Set(data?.map(r => r.created_by).filter(Boolean))]
+
+    const [pages, users] = await Promise.all([
+      this.getBatchPages(pageIds),
+      this.getBatchUserProfiles(userIds)
+    ])
+
+    const changesWithData = data?.map(revision => ({
+      ...revision,
+      author: users.find(u => u.id === revision.created_by),
+      page: pages.find(p => p.id === revision.page_id)
+    })) || []
+
+    cache.set(cacheKey, changesWithData, 60) // 1 minute
+    return changesWithData
+  }
+
+  // Batch load pages
+  static async getBatchPages(pageIds: string[]): Promise<Page[]> {
+    if (pageIds.length === 0) return []
+
+    const { data } = await supabase
+      .from('pages')
+      .select('id, title, slug')
+      .in('id', pageIds)
+
+    return data || []
+  }
+
+  // Admin functions
+  static async getPendingChanges(): Promise<PendingChange[]> {
+    const { data, error } = await supabase
+      .from('pending_changes')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+
+    if (error) return []
+
+    // Manually fetch related data in batches
+    const pageIds = [...new Set(data?.map(c => c.page_id))]
+    const revisionIds = [...new Set(data?.map(c => c.revision_id))]
+
+    const [pages, revisions] = await Promise.all([
+      this.getBatchPages(pageIds),
+      this.getBatchRevisions(revisionIds)
+    ])
+
+    return data?.map(change => ({
+      ...change,
+      page: pages.find(p => p.id === change.page_id),
+      revision: revisions.find(r => r.id === change.revision_id)
+    })) || []
+  }
+
+  static async getBatchRevisions(revisionIds: string[]): Promise<PageRevision[]> {
+    if (revisionIds.length === 0) return []
+
+    const { data } = await supabase
+      .from('page_revisions')
+      .select('*')
+      .in('id', revisionIds)
+
+    if (!data) return []
+
+    // Fetch authors
+    const userIds = [...new Set(data.map(r => r.created_by).filter(Boolean))]
+    const users = await this.getBatchUserProfiles(userIds)
+
+    return data.map(revision => ({
+      ...revision,
+      author: users.find(u => u.id === revision.created_by)
+    }))
+  }
+
   static async reviewChange(
-    changeId: string, 
-    status: 'approved' | 'rejected', 
+    changeId: string,
+    status: 'approved' | 'rejected',
     reviewComment: string,
     reviewerId: string
   ): Promise<void> {
-    const { data: change, error: fetchError } = await supabase
+    const { data: change } = await supabase
       .from('pending_changes')
-      .select(`
-        *,
-        revision:page_revisions(*)
-      `)
+      .select('*, revision_id, page_id')
       .eq('id', changeId)
       .single()
 
-    if (fetchError) throw fetchError
+    if (!change) throw new Error('Change not found')
 
-    // Update pending change status
+    // Update change status
     await supabase
       .from('pending_changes')
       .update({
@@ -303,77 +468,60 @@ export class WikiAPI {
       })
       .eq('id', changeId)
 
-    if (status === 'approved' && change.revision) {
-      // Apply the changes to the page
-      await supabase
-        .from('pages')
-        .update({
-          title: change.revision.title,
-          slug: slugify(change.revision.title),
-          content: change.revision.content
-        })
-        .eq('id', change.page_id)
-
-      // Mark revision as approved
-      await supabase
+    if (status === 'approved') {
+      // Get the revision
+      const { data: revision } = await supabase
         .from('page_revisions')
-        .update({
-          is_approved: true,
-          approved_by: reviewerId,
-          approved_at: new Date().toISOString()
-        })
+        .select('*')
         .eq('id', change.revision_id)
+        .single()
+
+      if (revision) {
+        // Apply changes to page
+        await supabase
+          .from('pages')
+          .update({
+            title: revision.title,
+            slug: slugify(revision.title),
+            content: revision.content
+          })
+          .eq('id', change.page_id)
+
+        // Mark revision as approved
+        await supabase
+          .from('page_revisions')
+          .update({
+            is_approved: true,
+            approved_by: reviewerId,
+            approved_at: new Date().toISOString()
+          })
+          .eq('id', change.revision_id)
+
+        // Invalidate related caches
+        const { data: page } = await supabase
+          .from('pages')
+          .select('slug')
+          .eq('id', change.page_id)
+          .single()
+
+        if (page) {
+          cache.invalidate(page.slug)
+        }
+      }
     }
+
+    // Clear caches
+    cache.invalidate('recent-changes')
   }
 
-  // Recent Changes
-  static async getRecentChanges(limit = 50): Promise<PageRevision[]> {
-    const { data, error } = await supabase
-      .from('page_revisions')
-      .select(`
-        *,
-        author:user_profiles(*),
-        page:pages!inner(title, slug)
-      `)
-      .eq('is_approved', true)
-      .order('created_at', { ascending: false })
-      .limit(limit)
-
-    if (error) throw error
-    return data || []
+  // Utility to check if page exists
+  static async pageExists(slug: string): Promise<boolean> {
+    const allSlugs = await this.getAllPageSlugs()
+    return allSlugs.includes(slug)
   }
 
-  // Special Pages
-  static async getPageStats(): Promise<{
-    totalPages: number
-    totalRevisions: number
-    totalUsers: number
-    totalCategories: number
-  }> {
-    const [pagesResult, revisionsResult, usersResult, categoriesResult] = await Promise.all([
-      supabase.from('pages').select('id', { count: 'exact', head: true }),
-      supabase.from('page_revisions').select('id', { count: 'exact', head: true }),
-      supabase.from('user_profiles').select('id', { count: 'exact', head: true }),
-      supabase.from('categories').select('id', { count: 'exact', head: true })
-    ])
-
-    return {
-      totalPages: pagesResult.count || 0,
-      totalRevisions: revisionsResult.count || 0,
-      totalUsers: usersResult.count || 0,
-      totalCategories: categoriesResult.count || 0
-    }
+  // Clear all caches (for admin)
+  static clearCache() {
+    cache.clear()
   }
 }
-
-// Create the increment function in Supabase
-/*
-CREATE OR REPLACE FUNCTION increment_edit_count(user_id UUID)
-RETURNS void AS $$
-BEGIN
-  UPDATE user_profiles 
-  SET edit_count = edit_count + 1 
-  WHERE id = user_id;
-END;
-$$ LANGUAGE plpgsql;
-*/
