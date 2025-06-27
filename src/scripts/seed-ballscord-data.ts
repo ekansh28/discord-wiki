@@ -281,6 +281,150 @@ Ballscord has influenced numerous other Discord communities and has become a cas
 [[Category:Ballscord]]
 [[Category:Communities]]`
 
+// NEW MISSING PAGES CONTENT
+const helpEditingContent = `# Help: Editing Pages
+
+This page explains how to edit pages on the Ballscord Wiki.
+
+## Getting Started
+
+To edit a page, click the "Edit" button at the top of any page. You'll need to be logged in to make edits.
+
+## Visual Editor
+
+The wiki includes a rich visual editor that lets you format text without knowing markup:
+
+* **Bold** and *italic* text formatting
+* Headings and lists
+* Wiki links to other pages
+* Images and tables
+* Colors and fonts
+
+## Wiki Markup
+
+You can also use the source editor for advanced formatting:
+
+\`\`\`
+**Bold text**
+*Italic text*
+[[Link to Page]]
+[[Page Name|Display Text]]
+# Heading 1
+## Heading 2
+* List item
+\`\`\`
+
+## Creating Links
+
+To link to other wiki pages, use double square brackets:
+* \`[[Main Page]]\` - Links to the main page
+* \`[[User:Ekansh|Ekansh]]\` - Links to Ekansh's user page with custom text
+
+## Categories
+
+Add categories to pages using:
+\`[[Category:Help]]\`
+
+## Tips
+
+* Always provide an edit summary
+* Preview your changes before saving
+* Be respectful and constructive
+* Follow the community guidelines
+
+## Need Help?
+
+Ask questions in the Discord server or contact a moderator.
+
+[[Category:Help]]`
+
+const communityGuidelinesContent = `# Community Guidelines
+
+Welcome to the Ballscord Wiki! Please follow these guidelines to maintain a positive community.
+
+## General Rules
+
+1. **Be respectful** - Treat all users with dignity
+2. **Stay on topic** - Keep content relevant to Ballscord
+3. **No vandalism** - Don't delete or damage existing content
+4. **Cite sources** - Back up claims with evidence
+5. **Use edit summaries** - Explain your changes
+
+## Content Standards
+
+* Write in a neutral, encyclopedic tone
+* Avoid personal attacks or drama
+* Keep content appropriate for all ages
+* Respect copyright and fair use
+
+## Editing Etiquette
+
+* Make constructive edits
+* Don't edit war - discuss disagreements
+* Be bold but not reckless
+* Ask for help if unsure
+
+## Consequences
+
+Violations may result in:
+* Warnings
+* Temporary blocks
+* Permanent bans
+* Page protection
+
+## Questions?
+
+Contact the moderators in Discord or on their user pages.
+
+[[Category:Community]]
+[[Category:Help]]`
+
+const featuredContentContent = `# Featured Content
+
+This page showcases the best articles and content on the Ballscord Wiki.
+
+## Featured Articles
+
+### [[Ballscord]]
+The main article about the Discord server, covering its history, culture, and community.
+
+### [[Ekansh]]
+Biography of the server founder and his various projects.
+
+### [[Server Lore]]
+Comprehensive timeline of major events and drama in server history.
+
+## Featured Media
+
+* Server screenshots and memorable moments
+* Memes and community art
+* Music and creative content
+
+## How to Nominate
+
+To nominate content for featuring:
+
+1. Ensure the article is well-written and comprehensive
+2. Check that it follows wiki standards
+3. Post on the community discussion page
+4. Get consensus from active editors
+
+## Criteria
+
+Featured content should be:
+* Accurate and well-sourced
+* Comprehensive coverage of the topic
+* Well-written and engaging
+* Properly formatted with good images
+* Representative of the wiki's best work
+
+## Archive
+
+View all previously featured content in the [[Featured Content Archive]].
+
+[[Category:Featured]]
+[[Category:Community]]`
+
 interface PageData {
   title: string
   slug: string
@@ -306,6 +450,25 @@ const pages: PageData[] = [
     slug: 'server-lore',
     content: serverLoreContent,
     categories: ['History', 'Ballscord', 'Communities']
+  },
+  // NEW MISSING PAGES
+  {
+    title: 'Help:Editing',
+    slug: 'help-editing',
+    content: helpEditingContent,
+    categories: ['Help']
+  },
+  {
+    title: 'Community Guidelines',
+    slug: 'community-guidelines',
+    content: communityGuidelinesContent,
+    categories: ['Community', 'Help']
+  },
+  {
+    title: 'Featured Content',
+    slug: 'featured-content',
+    content: featuredContentContent,
+    categories: ['Featured', 'Community']
   }
 ]
 
@@ -316,22 +479,37 @@ const categories = [
   { name: 'Server Owners', description: 'Discord server owners and administrators' },
   { name: 'Ballscord', description: 'Everything related to the Ballscord server' },
   { name: 'Musicians', description: 'Musical artists and creators' },
-  { name: 'History', description: 'Historical information and timelines' }
+  { name: 'History', description: 'Historical information and timelines' },
+  // NEW CATEGORIES
+  { name: 'Help', description: 'Help and tutorial pages for using the wiki' },
+  { name: 'Featured', description: 'Featured and highlighted content' }
 ]
 
 async function seedData() {
-  console.log('🚀 Starting Ballscord Wiki data seeding...')
+  console.log('🚀 Starting Ballscord Wiki data seeding (including missing pages)...')
 
   try {
-    // Create a default admin user (you'll need to update this with actual user ID after login)
-    const adminUserId = 'admin-placeholder-id'
+    // Use a proper UUID format instead of placeholder text
+    const adminUserId = 'a37c22fa-7f5d-4e68-afc0-34d093eff609' // Valid UUID format
 
     // 1. Seed categories first
     console.log('📁 Creating categories...')
     for (const category of categories) {
+      // Check if category already exists first
+      const { data: existingCategory } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('name', category.name)
+        .single()
+      
+      if (existingCategory) {
+        console.log(`⚠️ Category ${category.name} already exists, skipping`)
+        continue
+      }
+
       const { error } = await supabase
         .from('categories')
-        .upsert({
+        .insert({
           name: category.name,
           description: category.description,
           created_by: adminUserId
@@ -347,10 +525,22 @@ async function seedData() {
     // 2. Seed pages
     console.log('📄 Creating pages...')
     for (const pageData of pages) {
+      // Check if page already exists
+      const { data: existingPage } = await supabase
+        .from('pages')
+        .select('id')
+        .eq('slug', pageData.slug)
+        .single()
+      
+      if (existingPage) {
+        console.log(`⚠️ Page ${pageData.title} already exists, skipping`)
+        continue
+      }
+
       // Create the page
       const { data: page, error: pageError } = await supabase
         .from('pages')
-        .upsert({
+        .insert({
           title: pageData.title,
           slug: pageData.slug,
           content: pageData.content,
@@ -390,10 +580,14 @@ async function seedData() {
     }
 
     console.log('🎉 Ballscord Wiki data seeding completed successfully!')
+    console.log('📝 All pages including missing ones are now available:')
+    pages.forEach(page => {
+      console.log(`   - /wiki/${page.slug}`)
+    })
     console.log('📝 Next steps:')
     console.log('   1. Update the admin user ID in your user_profiles table')
     console.log('   2. Visit your wiki to see the new content')
-    console.log('   3. Create additional pages as needed')
+    console.log('   3. Test the previously broken links')
 
   } catch (error) {
     console.error('❌ Error during data seeding:', error)
@@ -401,7 +595,6 @@ async function seedData() {
   }
 }
 
-// Run the seeder
-if (require.main === module) {
-  seedData()
-}
+// Run the seeder immediately
+console.log('🚀 Starting Ballscord Wiki data seeding (including missing pages)...')
+seedData()

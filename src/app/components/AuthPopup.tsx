@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 
 export default function AuthPopup() {
   const [user, setUser] = useState<any>(null)
+  const [userProfile, setUserProfile] = useState<any>(null)
   const [showPopup, setShowPopup] = useState(false)
   const [activeTab, setActiveTab] = useState<'signin' | 'signup'>('signin')
   const [email, setEmail] = useState('')
@@ -13,19 +14,103 @@ export default function AuthPopup() {
   const [message, setMessage] = useState('')
   const [mounted, setMounted] = useState(false)
 
+  // Create or get user profile
+  const createOrGetUserProfile = async (authUser: any) => {
+    try {
+      // First, check if user profile already exists
+      const { data: existingProfile, error: fetchError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single()
+
+      if (existingProfile && !fetchError) {
+        console.log('✅ User profile exists:', existingProfile)
+        setUserProfile(existingProfile)
+        return existingProfile
+      }
+
+      // Extract display name from user metadata
+      const getDisplayName = (user: any) => {
+        if (user.user_metadata?.full_name) return user.user_metadata.full_name
+        if (user.user_metadata?.name) return user.user_metadata.name
+        if (user.user_metadata?.display_name) return user.user_metadata.display_name
+        if (user.email) return user.email.split('@')[0]
+        return 'User'
+      }
+
+      const getUsername = (user: any) => {
+        if (user.user_metadata?.preferred_username) return user.user_metadata.preferred_username
+        if (user.user_metadata?.user_name) return user.user_metadata.user_name
+        if (user.email) return user.email.split('@')[0]
+        return `user_${Date.now()}`
+      }
+
+      // Create new user profile
+      console.log('👤 Creating new user profile for:', authUser.id)
+      const { data: newProfile, error: createError } = await supabase
+        .from('user_profiles')
+        .insert({
+          id: authUser.id, // Use the same ID as the auth user
+          username: getUsername(authUser),
+          display_name: getDisplayName(authUser),
+          avatar_url: authUser.user_metadata?.avatar_url || null,
+          is_admin: false, // New users are not admin by default
+          is_moderator: false,
+          bio: null,
+          edit_count: 0
+        })
+        .select()
+        .single()
+
+      if (createError) {
+        console.error('❌ Error creating user profile:', createError)
+        setMessage('Error creating user profile')
+        return null
+      }
+
+      console.log('✅ Created user profile:', newProfile)
+      setUserProfile(newProfile)
+      return newProfile
+    } catch (error) {
+      console.error('❌ Error in createOrGetUserProfile:', error)
+      return null
+    }
+  }
+
   // Load user on page load or auth state change
   useEffect(() => {
     setMounted(true)
     
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user) setUser(data.user)
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (data?.user) {
+        setUser(data.user)
+        await createOrGetUserProfile(data.user)
+      }
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 Auth state changed:', event, session?.user?.email)
+      
       if (session?.user) {
         setUser(session.user)
+        
+        // Create or get user profile for any sign in/up event
+        await createOrGetUserProfile(session.user)
+        
         setShowPopup(false) // Hide popup after login
         setMessage('')
+        
+        // Show success message based on event type
+        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+          setMessage('Signed in successfully!')
+        }
+      } else {
+        setUser(null)
+        setUserProfile(null)
+        if (event === 'SIGNED_OUT') {
+          setMessage('')
+        }
       }
     })
 
@@ -35,6 +120,8 @@ export default function AuthPopup() {
   // Trigger Supabase OAuth login
   const loginWithProvider = async (provider: 'google' | 'discord') => {
     setLoading(true)
+    setMessage('')
+    
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -42,9 +129,13 @@ export default function AuthPopup() {
           redirectTo: window.location.href,
         },
       })
-      if (error) setMessage(error.message)
+      if (error) {
+        console.error('OAuth error:', error)
+        setMessage(error.message)
+      }
     } catch (error) {
-      setMessage('An error occurred')
+      console.error('OAuth exception:', error)
+      setMessage('An error occurred during login')
     }
     setLoading(false)
   }
@@ -57,30 +148,48 @@ export default function AuthPopup() {
       return
     }
 
+    if (password.length < 6) {
+      setMessage('Password must be at least 6 characters')
+      return
+    }
+
     setLoading(true)
     setMessage('')
 
     try {
       let result
       if (activeTab === 'signup') {
+        console.log('📝 Attempting to sign up:', email)
         result = await supabase.auth.signUp({
           email,
           password,
         })
-        if (result.data?.user && !result.data.session) {
+        
+        if (result.error) {
+          setMessage(result.error.message)
+        } else if (result.data?.user && !result.data.session) {
           setMessage('Check your email for verification link!')
+        } else if (result.data?.user && result.data.session) {
+          // User is immediately signed in (email confirmation disabled)
+          await createOrGetUserProfile(result.data.user)
+          setMessage('Account created successfully!')
         }
       } else {
+        console.log('🔑 Attempting to sign in:', email)
         result = await supabase.auth.signInWithPassword({
           email,
           password,
         })
-      }
-
-      if (result.error) {
-        setMessage(result.error.message)
+        
+        if (result.error) {
+          setMessage(result.error.message)
+        } else if (result.data?.user) {
+          await createOrGetUserProfile(result.data.user)
+          setMessage('Signed in successfully!')
+        }
       }
     } catch (error) {
+      console.error('Auth error:', error)
       setMessage('An error occurred')
     }
     
@@ -88,21 +197,23 @@ export default function AuthPopup() {
   }
 
   const logout = async () => {
+    console.log('👋 Signing out')
     await supabase.auth.signOut()
     setUser(null)
+    setUserProfile(null)
+    setMessage('')
   }
 
   // Extract username from email or use display name
   const getDisplayName = (user: any) => {
-    if (user.user_metadata?.full_name) {
-      return user.user_metadata.full_name
-    }
-    if (user.user_metadata?.name) {
-      return user.user_metadata.name
-    }
-    if (user.email) {
-      return user.email.split('@')[0] // Extract username part from email
-    }
+    // First try to use the user profile display name
+    if (userProfile?.display_name) return userProfile.display_name
+    if (userProfile?.username) return userProfile.username
+    
+    // Fallback to auth user metadata
+    if (user.user_metadata?.full_name) return user.user_metadata.full_name
+    if (user.user_metadata?.name) return user.user_metadata.name
+    if (user.email) return user.email.split('@')[0]
     return 'User'
   }
 
@@ -124,7 +235,11 @@ export default function AuthPopup() {
         </a>
       ) : (
         <span className="user-info">
-          {getDisplayName(user)} | <a href="#" onClick={(e) => { e.preventDefault(); logout() }}>Logout</a>
+          {getDisplayName(user)}
+          {userProfile?.is_admin && <span style={{ color: '#ff6666' }}> [Admin]</span>}
+          {userProfile?.is_moderator && !userProfile?.is_admin && <span style={{ color: '#ffaa00' }}> [Mod]</span>}
+          {' | '}
+          <a href="#" onClick={(e) => { e.preventDefault(); logout() }}>Logout</a>
         </span>
       )}
 
@@ -176,6 +291,7 @@ export default function AuthPopup() {
                 onClick={() => loginWithProvider('google')}
                 disabled={loading}
                 className="auth-form button"
+                style={{ marginBottom: '4px' }}
               >
                 {loading ? 'Loading...' : '🔍 Continue with Google'}
               </button>
@@ -184,6 +300,7 @@ export default function AuthPopup() {
                 onClick={() => loginWithProvider('discord')}
                 disabled={loading}
                 className="auth-form button"
+                style={{ marginBottom: '8px' }}
               >
                 {loading ? 'Loading...' : '🎮 Continue with Discord'}
               </button>
@@ -200,15 +317,18 @@ export default function AuthPopup() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
+                  required
                 />
                 <input
                   type="password"
-                  placeholder="Password"
+                  placeholder="Password (min 6 characters)"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
+                  minLength={6}
+                  required
                 />
-                <button type="submit" disabled={loading}>
+                <button type="submit" disabled={loading || !email || !password}>
                   {loading ? 'Loading...' : (activeTab === 'signin' ? '✅ Sign In' : '📝 Sign Up')}
                 </button>
               </form>
@@ -217,13 +337,35 @@ export default function AuthPopup() {
               {message && (
                 <div style={{ 
                   fontSize: '10px', 
-                  color: message.includes('Check your email') ? '#008000' : '#800000',
+                  color: message.includes('Check your email') || message.includes('successfully') ? '#008000' : '#800000',
                   marginTop: '8px',
                   padding: '4px',
                   border: '1px inset #c0c0c0',
                   background: '#f0f0f0'
                 }}>
                   {message}
+                </div>
+              )}
+
+              {/* Debug info for development */}
+              {process.env.NODE_ENV === 'development' && user && (
+                <div style={{ 
+                  fontSize: '9px', 
+                  color: '#666',
+                  marginTop: '8px',
+                  padding: '4px',
+                  border: '1px solid #ddd',
+                  background: '#f9f9f9'
+                }}>
+                  <strong>Debug:</strong><br/>
+                  User ID: {user.id}<br/>
+                  Profile: {userProfile ? '✅' : '❌'}<br/>
+                  {userProfile && (
+                    <>
+                      Username: {userProfile.username}<br/>
+                      Admin: {userProfile.is_admin ? 'Yes' : 'No'}
+                    </>
+                  )}
                 </div>
               )}
             </div>

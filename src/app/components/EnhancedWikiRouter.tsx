@@ -8,6 +8,7 @@ import { Page, PageRevision, UserProfile, Category, PendingChange, PageSummary }
 import VisualEditor from './VisualEditor'
 import AdminPanel from './AdminPanel'
 import SpecialPages from './SpecialPages'
+import CategoryPage from './CategoryPage'
 import { generateTableOfContents, renderWikiMarkdown, slugify, validatePageTitle } from '@/lib/wiki-utils'
 
 export default function EnhancedWikiRouter() {
@@ -34,7 +35,7 @@ export default function EnhancedWikiRouter() {
   // Wiki data
   const [allPageSlugs, setAllPageSlugs] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-const [searchResults, setSearchResults] = useState<PageSummary[]>([])
+  const [searchResults, setSearchResults] = useState<PageSummary[]>([])
   const [showSearch, setShowSearch] = useState(false)
   
   // Table of contents
@@ -90,6 +91,11 @@ const [searchResults, setSearchResults] = useState<PageSummary[]>([])
     
     if (path.startsWith('/wiki/')) {
       view = path.slice(6) || 'main-page'
+    } else if (path.startsWith('/category/')) {
+      view = 'category:' + path.slice(10) // Store category slug with prefix
+    } else if (path === '/') {
+      // Homepage should show main-page
+      view = 'main-page'
     }
     
     setCurrentView(view)
@@ -103,6 +109,13 @@ const [searchResults, setSearchResults] = useState<PageSummary[]>([])
       
       // Handle special pages
       if (slug.startsWith('special-')) {
+        setCurrentPage(null)
+        setLoading(false)
+        return
+      }
+      
+      // Handle category pages
+      if (slug.startsWith('category:')) {
         setCurrentPage(null)
         setLoading(false)
         return
@@ -328,5 +341,309 @@ const [searchResults, setSearchResults] = useState<PageSummary[]>([])
       </div>
     )
   }
+
+  // Handle category pages
+  if (currentView.startsWith('category:')) {
+    const categorySlug = currentView.slice(9) // Remove 'category:' prefix
+    return (
+      <div className="main">
+        <div className="sidebar">
+          <div className="sidebar-section">
+            <h3>🧭 Navigation</h3>
+            <ul style={{ listStyle: 'none', padding: 0 }}>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('main-page') }}>Main Page</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('special-allpages') }}>All Pages</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('special-categories') }}>Categories</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('special-recent-changes') }}>Recent Changes</a></li>
+              <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('special-random') }}>Random Page</a></li>
+              {userProfile?.is_admin && (
+                <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('special-admin') }}>Admin Panel</a></li>
+              )}
+            </ul>
+          </div>
+        </div>
+        <CategoryPage categorySlug={categorySlug} />
+      </div>
+    )
+  }
+
+  // Render main wiki page
+  return (
+    <div className="main">
+      {/* Sidebar */}
+      <div className="sidebar">
+        {/* Search */}
+        <div className="sidebar-section">
+          <h3>🔍 Search</h3>
+          <input
+            type="text"
+            placeholder="Search pages..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value)
+              searchPages(e.target.value)
+            }}
+            style={{
+              width: '100%',
+              padding: '4px',
+              border: '1px inset #c0c0c0',
+              background: '#fff',
+              fontSize: '11px'
+            }}
+          />
+          {searchResults.length > 0 && (
+            <div style={{ marginTop: '8px', background: '#000', border: '1px solid #666', padding: '4px' }}>
+              {searchResults.slice(0, 10).map(page => (
+                <div key={page.id}>
+                  <a 
+                    href="#" 
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigateTo(page.slug)
+                    }}
+                    style={{ color: '#a3213d', fontSize: '11px', display: 'block', padding: '2px' }}
+                  >
+                    {page.title}
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Table of Contents */}
+        {tableOfContents.length > 0 && showToc && (
+          <div className="sidebar-section">
+            <h3>
+              📋 Contents 
+              <button 
+                onClick={() => setShowToc(!showToc)}
+                style={{ float: 'right', background: 'none', border: 'none', color: '#a3213d', cursor: 'pointer' }}
+              >
+                [hide]
+              </button>
+            </h3>
+            <div className="toc">
+              {renderTableOfContents(tableOfContents)}
+            </div>
+          </div>
+        )}
+
+        {/* Navigation */}
+        <div className="sidebar-section">
+          <h3>🧭 Navigation</h3>
+          <ul style={{ listStyle: 'none', padding: 0 }}>
+            <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('main-page') }}>Main Page</a></li>
+            <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('special-allpages') }}>All Pages</a></li>
+            <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('special-categories') }}>Categories</a></li>
+            <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('special-recent-changes') }}>Recent Changes</a></li>
+            <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('special-random') }}>Random Page</a></li>
+            {userProfile?.is_admin && (
+              <li><a href="#" onClick={(e) => { e.preventDefault(); navigateTo('special-admin') }}>Admin Panel</a></li>
+            )}
+          </ul>
+        </div>
+
+        {/* Page Info */}
+        {currentPage && (
+          <div className="sidebar-section">
+            <h3>ℹ️ Page Info</h3>
+            <div style={{ fontSize: '10px', color: '#ccc' }}>
+              <div>Views: {currentPage.view_count}</div>
+              <div>Created: {new Date(currentPage.created_at).toLocaleDateString()}</div>
+              <div>Modified: {new Date(currentPage.updated_at).toLocaleDateString()}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Main Content */}
+      <div className="content">
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            Loading...
+          </div>
+        ) : (
+          <>
+            {/* Page Header */}
+            <div style={{ borderBottom: '1px solid #666', paddingBottom: '10px', marginBottom: '15px' }}>
+              <h1 style={{ margin: '0 0 10px 0', color: '#fff' }}>
+                {currentPage ? currentPage.title : editTitle}
+                {!currentPage && <span style={{ color: '#ff6666' }}> (page does not exist)</span>}
+              </h1>
+              
+              {/* Page Actions */}
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                {!isEditing ? (
+                  <>
+                    <button onClick={startEditing} style={{ fontSize: '11px' }}>
+                      {currentPage ? '✏️ Edit' : '📝 Create'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={saveChanges} disabled={saving} style={{ fontSize: '11px' }}>
+                      {saving ? '💾 Saving...' : '💾 Save'}
+                    </button>
+                    <button onClick={cancelEditing} style={{ fontSize: '11px' }}>
+                      ❌ Cancel
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Messages */}
+            {error && (
+              <div style={{ 
+                background: '#800000', 
+                color: '#fff', 
+                padding: '8px', 
+                marginBottom: '15px',
+                border: '1px solid #ff0000'
+              }}>
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div style={{ 
+                background: '#008000', 
+                color: '#fff', 
+                padding: '8px', 
+                marginBottom: '15px',
+                border: '1px solid #00ff00'
+              }}>
+                {success}
+              </div>
+            )}
+
+            {/* Editor or Content */}
+            {isEditing ? (
+              <div>
+                {/* Editor Mode Toggle */}
+                <div style={{ 
+                  background: '#333', 
+                  padding: '8px', 
+                  border: '1px inset #666',
+                  marginBottom: '10px',
+                  display: 'flex',
+                  gap: '5px',
+                  alignItems: 'center'
+                }}>
+                  <button 
+                    onClick={() => setEditorMode(editorMode === 'visual' ? 'source' : 'visual')} 
+                    style={{ fontSize: '10px' }}
+                  >
+                    {editorMode === 'visual' ? '📝 Source' : '👁️ Visual'}
+                  </button>
+                </div>
+
+                {/* Title Input */}
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={{ display: 'block', marginBottom: '4px', color: '#ccc' }}>
+                    Page Title:
+                  </label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '4px',
+                      border: '1px inset #c0c0c0',
+                      background: '#fff',
+                      fontSize: '12px'
+                    }}
+                  />
+                </div>
+
+                {/* Visual Editor */}
+                {editorMode === 'visual' ? (
+                  <VisualEditor
+                    content={editContent}
+                    onChange={setEditContent}
+                    onModeChange={setEditorMode}
+                    mode={editorMode}
+                    existingPages={allPageSlugs}
+                  />
+                ) : (
+                  <textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    placeholder="Enter your content here..."
+                    style={{
+                      width: '100%',
+                      height: '400px',
+                      padding: '8px',
+                      border: '1px inset #c0c0c0',
+                      background: '#fff',
+                      fontSize: '12px',
+                      fontFamily: 'monospace',
+                      resize: 'vertical'
+                    }}
+                  />
+                )}
+
+                {/* Edit Summary */}
+                <div style={{ marginTop: '10px' }}>
+                  <label style={{ display: 'block', marginBottom: '4px', color: '#ccc' }}>
+                    Edit Summary:
+                  </label>
+                  <input
+                    type="text"
+                    value={editSummary}
+                    onChange={(e) => setEditSummary(e.target.value)}
+                    placeholder="Describe your changes..."
+                    style={{
+                      width: '100%',
+                      padding: '4px',
+                      border: '1px inset #c0c0c0',
+                      background: '#fff',
+                      fontSize: '11px'
+                    }}
+                  />
+                </div>
+
+                {/* Preview */}
+                {editContent && editorMode === 'source' && (
+                  <div style={{ marginTop: '15px' }}>
+                    <h3 style={{ color: '#ccc' }}>Preview:</h3>
+                    <div 
+                      style={{ 
+                        border: '1px inset #666', 
+                        padding: '10px', 
+                        background: '#222',
+                        minHeight: '100px'
+                      }}
+                      dangerouslySetInnerHTML={{ 
+                        __html: renderWikiMarkdown(editContent, allPageSlugs)
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                {/* Page Content */}
+                {currentPage ? (
+                  <div 
+                    className="wiki-content"
+                    dangerouslySetInnerHTML={{ 
+                      __html: renderWikiMarkdown(currentPage.content || '', allPageSlugs)
+                    }}
+                  />
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#888' }}>
+                    <h2>This page does not exist</h2>
+                    <p>You can create it by clicking the "Create" button above.</p>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
 }
-    // Render main wiki page

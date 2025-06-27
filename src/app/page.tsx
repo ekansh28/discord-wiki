@@ -1,11 +1,18 @@
 // src/app/page.tsx
 'use client'
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import EnhancedWikiRouter from './components/EnhancedWikiRouter'
 import AuthPopup from './components/AuthPopup'
 
 export default function HomePage() {
+  useEffect(() => {
+    // Redirect homepage to main-page if we're at root
+    if (window.location.pathname === '/') {
+      window.history.replaceState({}, '', '/wiki/main-page')
+    }
+  }, [])
+
   return (
     <div className="wrapper">
       <header>
@@ -18,7 +25,7 @@ export default function HomePage() {
         <div style={{ 
           position: 'absolute', 
           top: '5px', 
-          right: '10px', 
+          right: '10px',
           fontSize: '10px',
           color: '#888'
         }}>
