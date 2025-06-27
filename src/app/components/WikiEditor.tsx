@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { WikiAPI } from '@/lib/wiki-api'
-import { Page, PageRevision, UserProfile, TableOfContentsItem } from '@/types/wiki'
+import { Page, PageRevision, UserProfile, TableOfContentsItem,Category, PendingChange, PageSummary } from '@/types/wiki'
+
 import { generateTableOfContents, renderWikiMarkdown, formatDate, timeSince, validatePageTitle, slugify } from '@/lib/wiki-utils'
 
 export default function WikiEditor() {
@@ -23,7 +24,7 @@ export default function WikiEditor() {
   const [revisions, setRevisions] = useState<PageRevision[]>([])
   const [showHistory, setShowHistory] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Page[]>([])
+  const [searchResults, setSearchResults] = useState<PageSummary[]>([])
   const [currentSlug, setCurrentSlug] = useState('main-page')
   const [allPages, setAllPages] = useState<Page[]>([])
   const [mounted, setMounted] = useState(false)

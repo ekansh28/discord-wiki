@@ -1,3 +1,4 @@
+// src/app/components/VisualEditor.tsx
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react'
@@ -16,16 +17,22 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
   const [selectedBackgroundColor, setSelectedBackgroundColor] = useState('#000000')
   const [fontSize, setFontSize] = useState('14')
   const [fontFamily, setFontFamily] = useState('Verdana')
+  const [showPlaceholder, setShowPlaceholder] = useState(false)
 
   useEffect(() => {
     if (mode === 'visual' && editorRef.current) {
       // Convert markdown to HTML for visual editing
       const htmlContent = markdownToHtml(content)
       editorRef.current.innerHTML = htmlContent
+      
+      // Show placeholder if content is empty
+      setShowPlaceholder(!content.trim())
     }
   }, [content, mode])
 
   const markdownToHtml = (markdown: string): string => {
+    if (!markdown.trim()) return ''
+    
     let html = markdown
     
     // Convert headings
@@ -95,6 +102,35 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
       const html = editorRef.current.innerHTML
       const markdown = htmlToMarkdown(html)
       onChange(markdown)
+      
+      // Update placeholder visibility
+      setShowPlaceholder(!html.trim() || html === '<p><br></p>' || html === '<br>')
+    }
+  }
+
+  const handleEditorFocus = () => {
+    setShowPlaceholder(false)
+    if (editorRef.current && (!editorRef.current.innerHTML.trim() || editorRef.current.innerHTML === '<p><br></p>')) {
+      editorRef.current.innerHTML = '<p></p>'
+      // Set cursor to the paragraph
+      const range = document.createRange()
+      const sel = window.getSelection()
+      if (sel && editorRef.current.firstChild) {
+        range.setStart(editorRef.current.firstChild, 0)
+        range.collapse(true)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+    }
+  }
+
+  const handleEditorBlur = () => {
+    if (editorRef.current) {
+      const isEmpty = !editorRef.current.innerHTML.trim() || 
+                     editorRef.current.innerHTML === '<p><br></p>' || 
+                     editorRef.current.innerHTML === '<br>' ||
+                     editorRef.current.innerHTML === '<p></p>'
+      setShowPlaceholder(isEmpty)
     }
   }
 
@@ -420,27 +456,48 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
       </div>
       
       {/* Visual Editor */}
-      <div
-        ref={editorRef}
-        contentEditable
-        onInput={handleContentChange}
-        onPaste={handleContentChange}
-        onKeyUp={handleContentChange}
-        style={{
-          width: '100%',
-          minHeight: '400px',
-          padding: '15px',
-          border: '1px inset #c0c0c0',
-          background: '#fff',
-          color: '#000',
-          fontSize: '14px',
-          fontFamily: 'Verdana, sans-serif',
-          lineHeight: '1.6',
-          outline: 'none',
-          overflow: 'auto'
-        }}
-        placeholder="Start typing your content..."
-      />
+      <div style={{ position: 'relative' }}>
+        <div
+          ref={editorRef}
+          contentEditable
+          onInput={handleContentChange}
+          onPaste={handleContentChange}
+          onKeyUp={handleContentChange}
+          onFocus={handleEditorFocus}
+          onBlur={handleEditorBlur}
+          style={{
+            width: '100%',
+            minHeight: '400px',
+            padding: '15px',
+            border: '1px inset #c0c0c0',
+            background: '#fff',
+            color: '#000',
+            fontSize: '14px',
+            fontFamily: 'Verdana, sans-serif',
+            lineHeight: '1.6',
+            outline: 'none',
+            overflow: 'auto'
+          }}
+          suppressContentEditableWarning={true}
+        />
+        
+        {/* Placeholder overlay */}
+        {showPlaceholder && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '16px',
+              left: '16px',
+              color: '#999',
+              fontSize: '14px',
+              pointerEvents: 'none',
+              fontFamily: 'Verdana, sans-serif'
+            }}
+          >
+            Start typing your content...
+          </div>
+        )}
+      </div>
       
       {/* Helper Text */}
       <div style={{ 

@@ -13,6 +13,13 @@ export interface Page {
   latest_revision?: PageRevision
 }
 
+// Partial page interface for batch operations
+export interface PageSummary {
+  id: string
+  title: string
+  slug: string
+}
+
 export interface PageRevision {
   id: string
   page_id: string
@@ -26,7 +33,7 @@ export interface PageRevision {
   approved_by: string | null
   approved_at: string | null
   author?: UserProfile
-  page?: Page
+  page?: Page | PageSummary
 }
 
 export interface UserProfile {
@@ -59,7 +66,7 @@ export interface PendingChange {
   reviewed_at: string | null
   review_comment: string | null
   created_at: string
-  page?: Page
+  page?: Page | PageSummary
   revision?: PageRevision
   author?: UserProfile
 }
