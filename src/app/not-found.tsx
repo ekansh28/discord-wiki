@@ -44,7 +44,7 @@ export default function NotFound() {
               display: 'inline-block'
             }}
           >
-            🏠 Home
+             Home
           </Link>
           
           <Link 

@@ -43,7 +43,7 @@ export default function HomePage() {
           fontSize: '10px',
           color: '#888'
         }}>
-          ⚡ Enhanced • Cached • Fast
+         
         </div>
       </header>
 
@@ -53,7 +53,7 @@ export default function HomePage() {
           window.history.pushState({}, '', '/wiki/ballscord');
           window.dispatchEvent(new PopStateEvent('popstate'));
         }}>
-          🏠 Home
+           Home
         </a>
         
         <a href="#" onClick={(e) => { 
@@ -61,7 +61,7 @@ export default function HomePage() {
           window.history.pushState({}, '', '/wiki/special-allpages');
           window.dispatchEvent(new PopStateEvent('popstate'));
         }}>
-          📄 Browse All Pages
+            Pages
         </a>
         
         <a href="#" onClick={(e) => { 
@@ -69,7 +69,7 @@ export default function HomePage() {
           window.history.pushState({}, '', '/wiki/special-categories');
           window.dispatchEvent(new PopStateEvent('popstate'));
         }}>
-          📁 Browse Categories
+           Categories
         </a>
         
         <a href="#" onClick={(e) => { 
@@ -77,7 +77,7 @@ export default function HomePage() {
           window.history.pushState({}, '', '/wiki/special-recent-changes');
           window.dispatchEvent(new PopStateEvent('popstate'));
         }}>
-          📝 Recent Changes
+          Recent Changes
         </a>
         
         <a href="#" onClick={(e) => { 
@@ -85,7 +85,7 @@ export default function HomePage() {
           window.history.pushState({}, '', '/wiki/special-random');
           window.dispatchEvent(new PopStateEvent('popstate'));
         }}>
-          🎲 Random
+           Random
         </a>
         
         {/* AuthPopup with controlled visibility */}
@@ -101,7 +101,7 @@ export default function HomePage() {
         <div className="auth-popup-backdrop" onClick={handleCloseAuthPopup}>
           <div className="auth-popup" onClick={(e) => e.stopPropagation()}>
             <div className="auth-popup-header">
-              <span>🔐 User Authentication</span>
+              <span> User Authentication</span>
               <button 
                 className="auth-popup-close"
                 onClick={handleCloseAuthPopup}
@@ -120,9 +120,9 @@ export default function HomePage() {
       )}
 
       <footer>
-        🌀 Made with love & chaos on Neocities | Styled like 2007 | Powered by your trauma
+        By Ekansh | please give me <a href="https://paypal.me/ekansh32" target="_blank" rel="noopener noreferrer">money</a> | made for ballscord
         <div style={{ marginTop: '8px', fontSize: '9px', color: '#666' }}>
-          ⚡ Enhanced Features: Fast Caching • Rich Visual Editor • Smart Linking • Auto-Save
+         
         </div>
         <div style={{ marginTop: '4px', fontSize: '9px', color: '#555' }}>
           💡 Tips: Click links to navigate • Red links = pages to create • Use Visual Editor for easy formatting

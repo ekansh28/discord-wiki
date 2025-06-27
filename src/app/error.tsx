@@ -69,7 +69,7 @@ export default function Error({
               fontSize: '12px'
             }}
           >
-            🏠 Go Home
+             Go Home
           </button>
         </div>
         
