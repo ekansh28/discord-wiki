@@ -1,4 +1,4 @@
-/* Updated globals.css with improved visual editor styles */
+/* Updated globals.css with improved visual editor styles and height constraints */
 
 body {
   background: url('https://cdn.sekansh21.workers.dev/coolwallpaper.png');
@@ -8,6 +8,7 @@ body {
   font-family: "Verdana", sans-serif;
   margin: 0;
   padding: 0;
+  min-height: 100vh;
 }
 
 .wrapper {
@@ -18,6 +19,12 @@ body {
   color: white;
   box-shadow: 0 0 10px #000;
   padding: 20px;
+  /* Set minimum height and maximum height with 40% extension */
+  min-height: calc(100vh - 120px); /* Base height (full viewport minus margins) */
+  max-height: calc((100vh - 120px) * 1.4); /* Maximum 40% extension */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Prevent wrapper from growing beyond max-height */
 }
 
 header {
@@ -29,6 +36,7 @@ header {
   padding-bottom: 25px;
   font-size: 20px;
   font-family: "Arial Black", sans-serif;
+  flex-shrink: 0; /* Don't shrink header */
 }
 
 .fire-gif {
@@ -47,6 +55,7 @@ nav {
   text-align: center;
   font-size: 14px;
   margin-bottom: 20px;
+  flex-shrink: 0; /* Don't shrink navigation */
 }
 
 nav a {
@@ -58,14 +67,20 @@ nav a {
 
 .main {
   display: flex;
+  flex: 1; /* Take remaining space */
+  min-height: 0; /* Allow shrinking */
+  overflow: hidden; /* Prevent overflow on main container */
 }
 
 .sidebar {
-  width: 175px; /* Reduced from 250px (30% reduction) */
+  width: 192px; /* Increased from 175px by 10% (175 * 1.1 ≈ 192) */
   padding: 10px;
   background: #000005;
   border-right: 2px dotted #999;
   font-size: 13px;
+  flex-shrink: 0; /* Don't shrink sidebar */
+  overflow-y: auto; /* Allow sidebar to scroll if needed */
+  max-height: 100%; /* Constrain sidebar height */
 }
 
 .sidebar a {
@@ -76,6 +91,47 @@ nav a {
   flex-grow: 1;
   padding: 10px 20px;
   font-size: 14px;
+  overflow-y: auto; /* Make content scrollable */
+  max-height: 100%; /* Constrain content height */
+  min-height: 0; /* Allow shrinking */
+}
+
+/* Ensure content can scroll smoothly */
+.content::-webkit-scrollbar {
+  width: 12px;
+}
+
+.content::-webkit-scrollbar-track {
+  background: #222;
+  border: 1px solid #666;
+}
+
+.content::-webkit-scrollbar-thumb {
+  background: #666;
+  border: 1px solid #999;
+  border-radius: 0; /* Keep retro look */
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+  background: #888;
+}
+
+/* Sidebar scrollbar styling */
+.sidebar::-webkit-scrollbar {
+  width: 10px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+  background: #111;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: #444;
+  border: 1px solid #666;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: #666;
 }
 
 textarea {
@@ -105,7 +161,11 @@ footer {
   font-size: 11px;
   color: #888;
   margin-top: 40px;
+  flex-shrink: 0; /* Don't shrink footer */
+  padding-top: 20px;
+  border-top: 1px dotted #666;
 }
+
 footer a{
   text-align: center;
   font-size: 11px;
@@ -372,6 +432,145 @@ footer a{
   color: #000;
 }
 
+/* External links */
+.external-link {
+  color: #66ff66;
+  text-decoration: none;
+  border-bottom: 1px dotted #66ff66;
+}
+
+.external-link:hover {
+  color: #99ff99;
+  text-decoration: none;
+  border-bottom: 1px solid #99ff99;
+}
+
+.external-link:after {
+  content: " ↗";
+  font-size: 9px;
+  color: #66ff66;
+  margin-left: 2px;
+}
+
+/* Wiki images */
+.wiki-image {
+  border: 1px solid #666;
+  margin: 2px;
+  background: #222;
+  padding: 2px;
+}
+
+.wiki-image:hover {
+  border-color: #999;
+}
+
+/* Infobox styles - Fandom wiki inspired */
+.infobox {
+  width: 300px;
+  float: right;
+  margin: 0 0 15px 15px;
+  background: #f8f9fa;
+  border: 1px solid #a2a9b1;
+  border-spacing: 0;
+  color: #000;
+  font-size: 11px;
+  line-height: 1.4;
+  clear: right;
+}
+
+.infobox-title {
+  background: #eaecf0;
+  color: #000;
+  text-align: center;
+  font-size: 14px;
+  font-weight: bold;
+  padding: 8px;
+  border-bottom: 1px solid #a2a9b1;
+}
+
+.infobox-image {
+  text-align: center;
+  padding: 8px;
+  border-bottom: 1px solid #a2a9b1;
+}
+
+.infobox-image img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #c8ccd1;
+}
+
+.infobox-caption {
+  font-size: 10px;
+  color: #54595d;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.infobox-row {
+  display: flex;
+  border-bottom: 1px solid #eaecf0;
+  min-height: 24px;
+}
+
+.infobox-row:last-child {
+  border-bottom: none;
+}
+
+.infobox-label {
+  background: #eaecf0;
+  font-weight: bold;
+  padding: 4px 8px;
+  width: 35%;
+  border-right: 1px solid #a2a9b1;
+  vertical-align: top;
+  word-wrap: break-word;
+}
+
+.infobox-value {
+  padding: 4px 8px;
+  width: 65%;
+  vertical-align: top;
+  word-wrap: break-word;
+}
+
+.infobox-value .wiki-link,
+.infobox-value .wiki-link-new,
+.infobox-value .external-link {
+  font-size: 11px;
+}
+
+.infobox-value .external-link {
+  color: #0645ad;
+}
+
+.infobox-value .external-link:after {
+  content: "";
+}
+
+/* Mobile responsiveness for infoboxes */
+@media (max-width: 768px) {
+  .infobox {
+    width: 100%;
+    float: none;
+    margin: 15px 0;
+  }
+  
+  .infobox-row {
+    flex-direction: column;
+  }
+  
+  .infobox-label,
+  .infobox-value {
+    width: 100%;
+    border-right: none;
+  }
+  
+  .infobox-label {
+    border-bottom: 1px solid #a2a9b1;
+  }
+}
+
 /* Enhanced Visual Editor Styles */
 .editor-container [contenteditable] {
   /* Match wiki styling */
@@ -379,6 +578,9 @@ footer a{
   color: #fff !important;
   border: 2px solid #666 !important;
   font-family: 'Verdana', sans-serif !important;
+  /* Ensure editor doesn't break layout */
+  max-height: 400px !important;
+  overflow-y: auto !important;
 }
 
 .editor-container [contenteditable] h1 {
@@ -585,6 +787,9 @@ footer a{
   .wrapper {
     width: 95%;
     margin: 20px auto;
+    /* Adjust height constraints for mobile */
+    min-height: calc(100vh - 80px);
+    max-height: calc((100vh - 80px) * 1.4);
   }
   
   .main {
@@ -596,12 +801,16 @@ footer a{
     border-right: none;
     border-bottom: 2px dotted #999;
     margin-bottom: 20px;
+    max-height: 300px; /* Limit sidebar height on mobile */
   }
 }
 
 @media (max-width: 600px) {
   .wrapper {
     padding: 10px;
+    /* Further adjust for small screens */
+    min-height: calc(100vh - 60px);
+    max-height: calc((100vh - 60px) * 1.4);
   }
   
   header {
@@ -626,6 +835,7 @@ footer a{
 
   .sidebar {
     width: 100%;
+    max-height: 250px; /* Even smaller on tiny screens */
   }
 }
 
@@ -648,4 +858,348 @@ footer a{
 .editor-toolbar button:active {
   transform: translateY(0) !important;
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.3) !important;
+}
+
+/* Visual Editor Specific Styles */
+.editor-container .wiki-link {
+  color: #6699ff !important;
+  text-decoration: none;
+  border-bottom: 1px dotted #6699ff;
+  background: rgba(102, 153, 255, 0.1);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
+.editor-container .wiki-link-new {
+  color: #ff6666 !important;
+  text-decoration: none;
+  border-bottom: 1px dotted #ff6666;
+  background: rgba(255, 102, 102, 0.1);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
+.editor-container .external-link {
+  color: #66ff66 !important;
+  text-decoration: none;
+  border-bottom: 1px dotted #66ff66;
+  background: rgba(102, 255, 102, 0.1);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
+.editor-container .external-link:after {
+  content: " ↗";
+  font-size: 9px;
+  color: #66ff66;
+  margin-left: 2px;
+}
+
+.editor-container .wiki-link:hover,
+.editor-container .wiki-link-new:hover,
+.editor-container .external-link:hover {
+  opacity: 0.8;
+}
+
+.editor-container .wiki-image {
+  border: 1px solid #666;
+  margin: 2px;
+  background: #222;
+  padding: 2px;
+}
+
+.editor-container .wiki-image:hover {
+  border-color: #999;
+}
+
+.editor-container h1 {
+  color: #ff6666 !important;
+  border-bottom: 2px solid #ff6666;
+  padding-bottom: 5px;
+  margin: 20px 0 10px 0;
+}
+
+.editor-container h2 {
+  color: #ff6666 !important;
+  border-bottom: 1px solid #ff6666;
+  padding-bottom: 3px;
+  margin: 20px 0 10px 0;
+}
+
+.editor-container h3 {
+  color: #ff6666 !important;
+  margin: 20px 0 10px 0;
+}
+
+.editor-container ul, .editor-container ol {
+  margin: 10px 0;
+  padding-left: 25px;
+}
+
+.editor-container li {
+  margin-bottom: 5px;
+}
+
+.editor-container blockquote {
+  border-left: 3px solid #666;
+  margin: 15px 0;
+  padding: 10px 15px;
+  background: #f5f5f5;
+  font-style: italic;
+  color: #000;
+}
+
+.editor-container p {
+  margin: 10px 0;
+}
+
+.editor-container strong {
+  font-weight: bold;
+}
+
+.editor-container em {
+  font-style: italic;
+}
+
+.editor-container img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 10px 0;
+}
+
+/* Visual Editor Infobox Styles */
+.editor-container .infobox {
+  width: 300px;
+  float: right;
+  margin: 0 0 15px 15px;
+  background: #f8f9fa;
+  border: 1px solid #a2a9b1;
+  color: #000;
+  font-size: 11px;
+}
+
+.editor-container .infobox-title {
+  background: #eaecf0;
+  color: #000;
+  text-align: center;
+  font-size: 14px;
+  font-weight: bold;
+  padding: 8px;
+  border-bottom: 1px solid #a2a9b1;
+}
+
+.editor-container .infobox-image {
+  text-align: center;
+  padding: 8px;
+  border-bottom: 1px solid #a2a9b1;
+}
+
+.editor-container .infobox-image img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #c8ccd1;
+}
+
+.editor-container .infobox-caption {
+  font-size: 10px;
+  color: #54595d;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.editor-container .infobox-row {
+  display: flex;
+  border-bottom: 1px solid #eaecf0;
+  min-height: 24px;
+}
+
+.editor-container .infobox-label {
+  background: #eaecf0;
+  font-weight: bold;
+  padding: 4px 8px;
+  width: 35%;
+  border-right: 1px solid #a2a9b1;
+  font-size: 10px;
+}
+
+.editor-container .infobox-value {
+  padding: 4px 8px;
+  width: 65%;
+  font-size: 10px;
+}
+
+.editor-container .infobox-value .wiki-link,
+.editor-container .infobox-value .wiki-link-new {
+  color: #0645ad !important;
+  font-size: 10px;
+}
+
+.editor-container .infobox-value .external-link {
+  color: #0645ad !important;
+  font-size: 10px;
+}
+
+.editor-container .infobox-value .external-link:after {
+  content: "";
+}
+
+/* Visual Editor Component Styles */
+.editor-container {
+  width: 100%;
+}
+
+.editor-toolbar {
+  background: #333;
+  border: 1px solid #666;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.toolbar-btn {
+  font-size: 10px;
+  background: #555;
+  color: #fff;
+  border: 1px solid #777;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.toolbar-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.toolbar-btn:active {
+  transform: translateY(0);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.toolbar-bold {
+  font-weight: bold;
+}
+
+.toolbar-italic {
+  font-style: italic;
+}
+
+.toolbar-underline {
+  text-decoration: underline;
+}
+
+.toolbar-wiki-link {
+  background: #006600;
+  border-color: #008800;
+}
+
+.toolbar-external-link {
+  background: #000066;
+  border-color: #000088;
+}
+
+.toolbar-image {
+  background: #666600;
+  border-color: #888800;
+}
+
+.toolbar-infobox {
+  background: #660000;
+  border-color: #880000;
+}
+
+.toolbar-table {
+  background: #660066;
+  border-color: #880088;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 20px;
+  background: #666;
+  margin: 0 4px;
+}
+
+.toolbar-select {
+  font-size: 10px;
+  background: #555;
+  color: #fff;
+  border: 1px solid #777;
+  padding: 4px;
+}
+
+.toolbar-info {
+  font-size: 10px;
+  color: #ccc;
+}
+
+.visual-editor {
+  min-height: 400px;
+  padding: 15px;
+  border: 2px solid #666;
+  background: #181818;
+  color: #fff;
+  font-size: 14px;
+  font-family: 'Verdana', sans-serif;
+  line-height: 1.6;
+  outline: none;
+  overflow: auto;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 2px rgba(0,0,0,0.3);
+}
+
+.source-editor {
+  width: 100%;
+  height: 400px;
+  padding: 10px;
+  border: 1px inset #c0c0c0;
+  background: #fff;
+  font-size: 12px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  resize: vertical;
+  color: #000;
+  box-sizing: border-box;
+}
+
+.editor-help {
+  font-size: 10px;
+  color: #888;
+  margin-top: 5px;
+  padding: 5px;
+  background: #222;
+  border: 1px solid #555;
+  line-height: 1.4;
+}
+
+/* Ensure proper scroll behavior for long content */
+.wiki-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 10px 0;
+}
+
+/* Long text handling */
+.wiki-content {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Special handling for very long content blocks */
+.wiki-content pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+/* Ensure scrollable areas have proper padding */
+.content {
+  padding-bottom: 40px; /* Extra space at bottom for comfortable scrolling */
+}
+
+.sidebar {
+  padding-bottom: 20px; /* Extra space at bottom for comfortable scrolling */
 }

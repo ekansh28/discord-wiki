@@ -13,10 +13,6 @@ interface VisualEditorProps {
 
 export default function VisualEditor({ content, onChange, onModeChange, mode, existingPages }: VisualEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
-  const [selectedColor, setSelectedColor] = useState('#ffffff')
-  const [selectedBackgroundColor, setSelectedBackgroundColor] = useState('#000000')
-  const [fontSize, setFontSize] = useState('14')
-  const [fontFamily, setFontFamily] = useState('Verdana')
 
   useEffect(() => {
     if (mode === 'visual' && editorRef.current) {
@@ -33,17 +29,153 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
     
     let html = markdown
     
+    // Convert infoboxes {{Infobox|param=value|...}}
+    html = html.replace(/\{\{Infobox([\s\S]*?)\}\}/g, (match: string, content: string) => {
+      const lines = content.split('\n').map((line: string) => line.trim()).filter((line: string) => line.length > 0)
+      const params: Record<string, string> = {}
+      
+      // Parse infobox parameters
+      for (const line of lines) {
+        if (line.startsWith('|')) {
+          const cleanLine = line.substring(1).trim()
+          const equalIndex = cleanLine.indexOf('=')
+          if (equalIndex > 0) {
+            const key = cleanLine.substring(0, equalIndex).trim()
+            const value = cleanLine.substring(equalIndex + 1).trim()
+            params[key] = value
+          }
+        }
+      }
+
+      // Build infobox HTML
+      let infoboxHtml = '<div class="infobox" contenteditable="false">'
+      
+      // Title
+      if (params.title) {
+        infoboxHtml += `<div class="infobox-title">${params.title}</div>`
+      }
+      
+      // Image
+      if (params.image) {
+        const imageUrl = params.image.startsWith('http') 
+          ? params.image 
+          : `https://mbessirvgrfztivyftfl.supabase.co/storage/v1/object/public/wiki-files/${params.image}`
+        const caption = params.caption || ''
+        
+        infoboxHtml += `<div class="infobox-image">`
+        infoboxHtml += `<img src="${imageUrl}" alt="${caption}" />`
+        if (caption) {
+          infoboxHtml += `<div class="infobox-caption">${caption}</div>`
+        }
+        infoboxHtml += `</div>`
+      }
+      
+      // Data rows
+      const excludedKeys = ['title', 'image', 'caption']
+      for (const [key, value] of Object.entries(params)) {
+        if (!excludedKeys.includes(key) && value) {
+          const displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+          
+          // Process links in values
+          let processedValue = value
+          
+          // Process external links
+          processedValue = processedValue.replace(/\[([^[\]\s]+)\s+([^\]]+)\]/g, (match: string, url: string, displayText: string) => {
+            if (url.match(/^https?:\/\//)) {
+              return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="external-link">${displayText}</a>`
+            }
+            return match
+          })
+          
+          // Process wiki links
+          processedValue = processedValue.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match: string, pageName: string, displayText?: string) => {
+            if (pageName.startsWith('User:')) {
+              const slug = pageName.toLowerCase().replace(/\s+/g, '-').replace('user:', 'user-')
+              const display = displayText || pageName.replace('User:', '')
+              return `<a href="/wiki/${slug}" class="wiki-link">${display}</a>`
+            }
+            
+            const slug = pageName.toLowerCase().replace(/\s+/g, '-')
+            const display = displayText || pageName
+            const exists = existingPages.includes(slug)
+            const className = exists ? 'wiki-link' : 'wiki-link-new'
+            return `<a href="/wiki/${slug}" class="${className}">${display}</a>`
+          })
+          
+          infoboxHtml += `<div class="infobox-row">`
+          infoboxHtml += `<div class="infobox-label">${displayKey}</div>`
+          infoboxHtml += `<div class="infobox-value">${processedValue}</div>`
+          infoboxHtml += `</div>`
+        }
+      }
+      
+      infoboxHtml += '</div>'
+      return infoboxHtml
+    })
+
+    // Convert external links with custom text [https://example.com Display Text]
+    html = html.replace(/\[([^[\]\s]+)\s+([^\]]+)\]/g, (match: string, url: string, displayText: string) => {
+      const cleanUrl = url.trim()
+      const cleanDisplay = displayText.trim()
+      
+      if (cleanUrl.match(/^https?:\/\//)) {
+        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="external-link" contenteditable="false">${cleanDisplay}</a>`
+      }
+      
+      return match
+    })
+
+    // Convert bold external links **[https://example.com Display Text]**
+    html = html.replace(/\*\*\[([^[\]\s]+)\s+([^\]]+)\]\*\*/g, (match: string, url: string, displayText: string) => {
+      const cleanUrl = url.trim()
+      const cleanDisplay = displayText.trim()
+      
+      if (cleanUrl.match(/^https?:\/\//)) {
+        return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="external-link" contenteditable="false"><strong>${cleanDisplay}</strong></a>`
+      }
+      
+      return match
+    })
+
+    // Convert file attachments [[File:filename.ext|size|alt text]]
+    html = html.replace(/\[\[File:([^|\]]+)(?:\|([^|\]]+))?(?:\|([^\]]+))?\]\]/g, (match: string, filename: string, size?: string, altText?: string) => {
+      const cleanFilename = filename.trim()
+      const cleanSize = size ? size.trim() : ''
+      const cleanAlt = altText ? altText.trim() : cleanFilename
+      
+      const storageUrl = `https://mbessirvgrfztivyftfl.supabase.co/storage/v1/object/public/wiki-files/${cleanFilename}`
+      
+      let sizeStyle = ''
+      if (cleanSize) {
+        if (cleanSize.includes('x') && cleanSize.includes('px')) {
+          const [width, height] = cleanSize.replace('px', '').split('x')
+          sizeStyle = `width: ${width}px; height: ${height}px;`
+        } else if (cleanSize.includes('px')) {
+          sizeStyle = `width: ${cleanSize};`
+        } else if (cleanSize.includes('%')) {
+          sizeStyle = `width: ${cleanSize};`
+        }
+      }
+      
+      return `<img src="${storageUrl}" alt="${cleanAlt}" style="${sizeStyle} max-width: 100%; height: auto; display: inline-block; vertical-align: middle;" class="wiki-image" contenteditable="false" />`
+    })
+    
     // Convert headings
     html = html.replace(/^### (.*$)/gm, '<h3>$1</h3>')
     html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>')
     html = html.replace(/^# (.*$)/gm, '<h1>$1</h1>')
     
     // Convert bold and italic
-    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>')
     
     // Convert wiki links
-    html = html.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, pageName, displayText) => {
+    html = html.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match: string, pageName: string, displayText?: string) => {
+      // Skip if this looks like a File: or Category: link
+      if (pageName.startsWith('File:') || pageName.startsWith('Category:')) {
+        return match
+      }
+      
       const display = displayText || pageName
       const slug = pageName.toLowerCase().replace(/\s+/g, '-')
       const exists = existingPages.includes(slug)
@@ -70,6 +202,43 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
   const htmlToMarkdown = (html: string): string => {
     let markdown = html
     
+    // Convert infoboxes
+    markdown = markdown.replace(/<div class="infobox"[^>]*>([\s\S]*?)<\/div>/g, (match, content) => {
+      let infoboxMarkdown = '{{Infobox\n'
+      
+      // Extract title
+      const titleMatch = content.match(/<div class="infobox-title"[^>]*>(.*?)<\/div>/)
+      if (titleMatch) {
+        infoboxMarkdown += `|title        = ${titleMatch[1].replace(/<[^>]*>/g, '')}\n`
+      }
+      
+      // Extract image
+      const imageMatch = content.match(/<div class="infobox-image"[^>]*>[\s\S]*?<img[^>]*src="[^"]*\/wiki-files\/([^"]*)"[^>]*alt="([^"]*)"[^>]*>[\s\S]*?<\/div>/)
+      if (imageMatch) {
+        infoboxMarkdown += `|image        = ${imageMatch[1]}\n`
+        if (imageMatch[2] && imageMatch[2] !== imageMatch[1]) {
+          infoboxMarkdown += `|caption      = ${imageMatch[2]}\n`
+        }
+      }
+      
+      // Extract data rows
+      const rowMatches = content.matchAll(/<div class="infobox-row"[^>]*>[\s\S]*?<div class="infobox-label"[^>]*>(.*?)<\/div>[\s\S]*?<div class="infobox-value"[^>]*>(.*?)<\/div>[\s\S]*?<\/div>/g)
+      for (const rowMatch of rowMatches) {
+        const label = rowMatch[1].replace(/<[^>]*>/g, '').toLowerCase().replace(/\s+/g, '_')
+        let value = rowMatch[2]
+        
+        // Convert links back to markdown
+        value = value.replace(/<a[^>]*href="([^"]*)"[^>]*class="external-link"[^>]*>(.*?)<\/a>/g, '[$1 $2]')
+        value = value.replace(/<a[^>]*href="\/wiki\/([^"]*)"[^>]*class="wiki-link[^"]*"[^>]*>(.*?)<\/a>/g, '[[$2]]')
+        value = value.replace(/<[^>]*>/g, '')
+        
+        infoboxMarkdown += `|${label.padEnd(12)} = ${value}\n`
+      }
+      
+      infoboxMarkdown += '}}'
+      return infoboxMarkdown
+    })
+    
     // Convert headings
     markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/g, '# $1')
     markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/g, '## $1')
@@ -81,8 +250,46 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
     markdown = markdown.replace(/<em[^>]*>(.*?)<\/em>/g, '*$1*')
     markdown = markdown.replace(/<i[^>]*>(.*?)<\/i>/g, '*$1*')
     
+    // Convert external links with bold
+    markdown = markdown.replace(/<a[^>]*href="([^"]*)"[^>]*class="external-link"[^>]*><strong>(.*?)<\/strong><\/a>/g, '**[$1 $2]**')
+    
+    // Convert regular external links
+    markdown = markdown.replace(/<a[^>]*href="([^"]*)"[^>]*class="external-link"[^>]*>(.*?)<\/a>/g, '[$1 $2]')
+    
+    // Convert wiki images
+    markdown = markdown.replace(/<img[^>]*src="[^"]*\/wiki-files\/([^"]*)"[^>]*alt="([^"]*)"[^>]*style="([^"]*)"[^>]*>/g, (match, filename, alt, style) => {
+      let sizeString = ''
+      
+      // Extract size from style
+      const widthMatch = style.match(/width:\s*(\d+(?:\.\d+)?(?:px|%)?)/i)
+      const heightMatch = style.match(/height:\s*(\d+(?:\.\d+)?px)/i)
+      
+      if (widthMatch && heightMatch && widthMatch[1].includes('px') && heightMatch[1].includes('px')) {
+        const width = widthMatch[1].replace('px', '')
+        const height = heightMatch[1].replace('px', '')
+        sizeString = `|${width}x${height}px`
+      } else if (widthMatch) {
+        sizeString = `|${widthMatch[1]}`
+      }
+      
+      if (alt === filename) {
+        return `[[File:${filename}${sizeString}]]`
+      } else {
+        return `[[File:${filename}${sizeString}|${alt}]]`
+      }
+    })
+    
     // Convert wiki links
-    markdown = markdown.replace(/<a[^>]*class="wiki-link[^"]*"[^>]*href="\/wiki\/([^"]*)"[^>]*>(.*?)<\/a>/g, '[[$2]]')
+    markdown = markdown.replace(/<a[^>]*class="wiki-link[^"]*"[^>]*href="\/wiki\/([^"]*)"[^>]*>(.*?)<\/a>/g, (match: string, slug: string, text: string) => {
+      // Convert slug back to title case for display
+      const pageName = slug.split('-').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+      
+      if (text === pageName) {
+        return `[[${pageName}]]`
+      } else {
+        return `[[${pageName}|${text}]]`
+      }
+    })
     
     // Convert lists
     markdown = markdown.replace(/<ul[^>]*>(.*?)<\/ul>/gs, (match, content) => {
@@ -153,6 +360,115 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
     }
   }
 
+  const insertExternalLink = () => {
+    const selection = window.getSelection()
+    const selectedText = selection?.toString() || ''
+    const url = prompt('Enter URL:', 'https://')
+    const displayText = prompt('Enter display text:', selectedText || 'Link')
+    
+    if (url && displayText) {
+      const linkHtml = `<a href="${url}" target="_blank" rel="noopener noreferrer" class="external-link" contenteditable="false">${displayText}</a>`
+      
+      if (mode === 'visual') {
+        document.execCommand('insertHTML', false, linkHtml + '&nbsp;')
+      } else {
+        onChange(content + `[${url} ${displayText}]`)
+      }
+      
+      handleContentChange()
+    }
+  }
+
+  const insertImage = () => {
+    const filename = prompt('Enter image filename (will be stored in Supabase):', 'image.png')
+    const size = prompt('Enter size (optional, e.g., "40x40px", "200px", "50%"):', '')
+    const alt = prompt('Enter alt text (optional):', filename || '')
+    
+    if (filename) {
+      let imageMarkdown = `[[File:${filename}`
+      
+      if (size) {
+        imageMarkdown += `|${size}`
+      }
+      
+      if (alt && alt !== filename) {
+        imageMarkdown += `|${alt}`
+      }
+      
+      imageMarkdown += ']]'
+      
+      if (mode === 'visual') {
+        // For visual mode, create the actual HTML
+        const storageUrl = `https://mbessirvgrfztivyftfl.supabase.co/storage/v1/object/public/wiki-files/${filename}`
+        let sizeStyle = ''
+        
+        if (size) {
+          if (size.includes('x') && size.includes('px')) {
+            const [width, height] = size.replace('px', '').split('x')
+            sizeStyle = `width: ${width}px; height: ${height}px;`
+          } else if (size.includes('px')) {
+            sizeStyle = `width: ${size};`
+          } else if (size.includes('%')) {
+            sizeStyle = `width: ${size};`
+          }
+        }
+        
+        const imgHtml = `<img src="${storageUrl}" alt="${alt || filename}" style="${sizeStyle} max-width: 100%; height: auto; display: inline-block; vertical-align: middle;" class="wiki-image" contenteditable="false" /><p><br></p>`
+        document.execCommand('insertHTML', false, imgHtml)
+      } else {
+        onChange(content + `\n${imageMarkdown}\n`)
+      }
+      
+      handleContentChange()
+    }
+  }
+
+  const insertInfobox = () => {
+    const title = prompt('Enter infobox title:', 'Page Title')
+    const image = prompt('Enter image filename (optional):', '')
+    
+    if (title) {
+      let infoboxMarkdown = '{{Infobox\n'
+      infoboxMarkdown += `|title        = ${title}\n`
+      
+      if (image) {
+        infoboxMarkdown += `|image        = ${image}\n`
+        const caption = prompt('Enter image caption (optional):', '')
+        if (caption) {
+          infoboxMarkdown += `|caption      = ${caption}\n`
+        }
+      }
+      
+      // Add some common fields
+      const founder = prompt('Enter founder (optional):', '')
+      if (founder) {
+        infoboxMarkdown += `|founder      = ${founder}\n`
+      }
+      
+      const created = prompt('Enter date created (optional):', '')
+      if (created) {
+        infoboxMarkdown += `|date_created = ${created}\n`
+      }
+      
+      const status = prompt('Enter status (optional):', '')
+      if (status) {
+        infoboxMarkdown += `|status       = ${status}\n`
+      }
+      
+      infoboxMarkdown += '}}\n\n'
+      
+      if (mode === 'visual') {
+        // Convert to HTML and insert
+        const infoboxHtml = markdownToHtml(infoboxMarkdown)
+        document.execCommand('insertHTML', false, infoboxHtml)
+      } else {
+        onChange(infoboxMarkdown + content)
+      }
+      
+      handleContentChange()
+    }
+  }
+
   const insertTable = () => {
     const rows = prompt('Number of rows:', '3')
     const cols = prompt('Number of columns:', '3')
@@ -161,11 +477,11 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
       const numRows = parseInt(rows)
       const numCols = parseInt(cols)
       
-      let tableHtml = '<table class="wiki-table" style="border-collapse: collapse; width: 100%; margin: 15px 0; border: 1px solid #666;"><thead><tr>'
+      let tableHtml = '<table class="wiki-table"><thead><tr>'
       
       // Header row
       for (let j = 0; j < numCols; j++) {
-        tableHtml += '<th style="border: 1px solid #666; padding: 8px; background: #333; color: #fff;">Header ' + (j + 1) + '</th>'
+        tableHtml += '<th>Header ' + (j + 1) + '</th>'
       }
       tableHtml += '</tr></thead><tbody>'
       
@@ -173,7 +489,7 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
       for (let i = 1; i < numRows; i++) {
         tableHtml += '<tr>'
         for (let j = 0; j < numCols; j++) {
-          tableHtml += '<td style="border: 1px solid #666; padding: 6px;">Cell ' + i + ',' + (j + 1) + '</td>'
+          tableHtml += '<td>Cell ' + i + ',' + (j + 1) + '</td>'
         }
         tableHtml += '</tr>'
       }
@@ -188,70 +504,14 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
     }
   }
 
-  const insertImage = () => {
-    const url = prompt('Enter image URL:')
-    const alt = prompt('Enter image description:', 'Image')
-    
-    if (url) {
-      const imgHtml = `<img src="${url}" alt="${alt}" style="max-width: 100%; height: auto; display: block; margin: 10px 0;" /><p><br></p>`
-      
-      if (mode === 'visual') {
-        document.execCommand('insertHTML', false, imgHtml)
-      } else {
-        onChange(content + `\n![${alt}](${url})\n`)
-      }
-      
-      handleContentChange()
-    }
-  }
-
-  const applyTextColor = () => {
-    execCommand('foreColor', selectedColor)
-  }
-
-  const applyBackgroundColor = () => {
-    execCommand('hiliteColor', selectedBackgroundColor)
-  }
-
-  const applyFontSize = () => {
-    const selection = window.getSelection()
-    if (selection && selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0)
-      const span = document.createElement('span')
-      span.style.fontSize = fontSize + 'px'
-      
-      try {
-        range.surroundContents(span)
-        handleContentChange()
-      } catch (e) {
-        span.innerHTML = selection.toString()
-        range.deleteContents()
-        range.insertNode(span)
-        handleContentChange()
-      }
-    }
-  }
-
-  const applyFontFamily = () => {
-    execCommand('fontName', fontFamily)
-  }
-
   if (mode === 'source') {
     return (
       <div className="editor-container">
-        <div className="editor-toolbar" style={{ 
-          background: '#333', 
-          border: '1px solid #666', 
-          padding: '8px',
-          display: 'flex',
-          gap: '8px',
-          alignItems: 'center',
-          marginBottom: '10px'
-        }}>
-          <button onClick={() => onModeChange('visual')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
+        <div className="editor-toolbar">
+          <button onClick={() => onModeChange('visual')} className="toolbar-btn">
             👁️ Visual Mode
           </button>
-          <div style={{ fontSize: '10px', color: '#ccc' }}>
+          <div className="toolbar-info">
             Source Editor - Use markdown syntax
           </div>
         </div>
@@ -259,19 +519,18 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
         <textarea
           value={content}
           onChange={(e) => onChange(e.target.value)}
-          style={{
-            width: '100%',
-            height: '400px',
-            padding: '10px',
-            border: '1px inset #c0c0c0',
-            background: '#fff',
-            fontSize: '12px',
-            fontFamily: 'Consolas, Monaco, monospace',
-            resize: 'vertical',
-            color: '#000'
-          }}
+          className="source-editor"
           placeholder="Enter your content using markdown syntax..."
         />
+        
+        <div className="editor-help">
+          💡 <strong>Syntax Help:</strong> 
+          • Wiki links: [[Page Name]] or [[Page Name|Display Text]]
+          • External links: [https://example.com Display Text] or **[https://example.com Bold Link]**
+          • Images: [[File:image.png|40x40px|Alt text]]
+          • Infoboxes: {'{{Infobox|title=Title|image=image.png|param=value}}'}
+          • Bold: **text** • Italic: *text* • Headings: # ## ###
+        </div>
       </div>
     )
   }
@@ -279,50 +538,41 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
   return (
     <div className="editor-container">
       {/* Rich Toolbar */}
-      <div className="editor-toolbar" style={{ 
-        background: '#333', 
-        border: '1px solid #666', 
-        padding: '8px',
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '4px',
-        alignItems: 'center',
-        marginBottom: '10px'
-      }}>
+      <div className="editor-toolbar">
         {/* Mode Toggle */}
-        <button onClick={() => onModeChange('source')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
+        <button onClick={() => onModeChange('source')} className="toolbar-btn">
           📝 Source
         </button>
         
-        <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
+        <div className="toolbar-separator" />
         
         {/* Text Formatting */}
-        <button onClick={() => execCommand('bold')} style={{ fontSize: '10px', fontWeight: 'bold', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
+        <button onClick={() => execCommand('bold')} className="toolbar-btn toolbar-bold">
           B
         </button>
-        <button onClick={() => execCommand('italic')} style={{ fontSize: '10px', fontStyle: 'italic', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
+        <button onClick={() => execCommand('italic')} className="toolbar-btn toolbar-italic">
           I
         </button>
-        <button onClick={() => execCommand('underline')} style={{ fontSize: '10px', textDecoration: 'underline', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
+        <button onClick={() => execCommand('underline')} className="toolbar-btn toolbar-underline">
           U
         </button>
         
-        <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
+        <div className="toolbar-separator" />
         
         {/* Lists */}
-        <button onClick={() => execCommand('insertOrderedList')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
+        <button onClick={() => execCommand('insertOrderedList')} className="toolbar-btn">
           1. List
         </button>
-        <button onClick={() => execCommand('insertUnorderedList')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
+        <button onClick={() => execCommand('insertUnorderedList')} className="toolbar-btn">
           • List
         </button>
         
-        <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
+        <div className="toolbar-separator" />
         
         {/* Headings */}
         <select 
           onChange={(e) => execCommand('formatBlock', e.target.value)}
-          style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px' }}
+          className="toolbar-select"
         >
           <option value="">Normal</option>
           <option value="h1">Heading 1</option>
@@ -330,166 +580,73 @@ export default function VisualEditor({ content, onChange, onModeChange, mode, ex
           <option value="h3">Heading 3</option>
         </select>
         
-        <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
+        <div className="toolbar-separator" />
         
         {/* Wiki-specific Tools */}
-        <button onClick={insertWikiLink} style={{ fontSize: '10px', background: '#006600', color: '#fff', border: '1px solid #008800', padding: '4px 8px' }}>
-          🔗 Link Page
+        <button onClick={insertWikiLink} className="toolbar-btn toolbar-wiki-link">
+          🔗 Wiki Link
         </button>
-        <button onClick={insertTable} style={{ fontSize: '10px', background: '#660066', color: '#fff', border: '1px solid #880088', padding: '4px 8px' }}>
-          📊 Table
+        <button onClick={insertExternalLink} className="toolbar-btn toolbar-external-link">
+          🌐 External Link
         </button>
-        <button onClick={insertImage} style={{ fontSize: '10px', background: '#666600', color: '#fff', border: '1px solid #888800', padding: '4px 8px' }}>
+        <button onClick={insertImage} className="toolbar-btn toolbar-image">
           🖼️ Image
         </button>
+        <button onClick={insertInfobox} className="toolbar-btn toolbar-infobox">
+          📋 Infobox
+        </button>
+        <button onClick={insertTable} className="toolbar-btn toolbar-table">
+          📊 Table
+        </button>
         
-        <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
+        <div className="toolbar-separator" />
         
         {/* Special Inserts */}
         <button 
           onClick={() => execCommand('insertHTML', '<hr style="border: 1px solid #666; margin: 20px 0;"><p><br></p>')}
-          style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}
+          className="toolbar-btn"
         >
           ➖ Line
         </button>
         <button 
           onClick={() => execCommand('insertHTML', '<blockquote style="border-left: 3px solid #666; margin: 15px 0; padding: 10px 15px; background: #f5f5f5; font-style: italic; color: #000;">Quote text here</blockquote><p><br></p>')}
-          style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}
+          className="toolbar-btn"
         >
           💬 Quote
         </button>
         
-        <div style={{ width: '1px', height: '20px', background: '#666', margin: '0 4px' }} />
+        <div className="toolbar-separator" />
         
         {/* Undo/Redo */}
-        <button onClick={() => execCommand('undo')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
+        <button onClick={() => execCommand('undo')} className="toolbar-btn">
           ↶ Undo
         </button>
-        <button onClick={() => execCommand('redo')} style={{ fontSize: '10px', background: '#555', color: '#fff', border: '1px solid #777', padding: '4px 8px' }}>
+        <button onClick={() => execCommand('redo')} className="toolbar-btn">
           ↷ Redo
         </button>
       </div>
       
-      {/* Visual Editor - No white container, integrated styling */}
+      {/* Visual Editor */}
       <div
         ref={editorRef}
         contentEditable
         onInput={handleInput}
         onKeyDown={handleKeyDown}
         onPaste={handleContentChange}
-        style={{
-          minHeight: '400px',
-          padding: '15px',
-          border: '2px solid #666',
-          background: '#181818', // Match the wiki background
-          color: '#fff', // White text like the rest of the wiki
-          fontSize: '14px',
-          fontFamily: 'Verdana, sans-serif',
-          lineHeight: '1.6',
-          outline: 'none',
-          overflow: 'auto',
-          borderRadius: '0', // Keep it retro
-          boxShadow: 'inset 1px 1px 2px rgba(0,0,0,0.3)' // Slight inset shadow for depth
-        }}
+        className="visual-editor"
         suppressContentEditableWarning={true}
       />
       
       {/* Helper Text */}
-      <div style={{ 
-        fontSize: '10px', 
-        color: '#888', 
-        marginTop: '5px',
-        padding: '5px',
-        background: '#222',
-        border: '1px solid #555'
-      }}>
+      <div className="editor-help">
         💡 <strong>Tips:</strong> 
-        • Select text and use toolbar buttons 
-        • Use "Link Page" to link to other wiki pages 
+        • Use "Wiki Link" for internal pages 
+        • Use "External Link" for websites 
+        • Use "Image" to add files from Supabase storage
+        • Use "Infobox" to create info panels like Fandom wikis
         • Switch to Source mode for advanced editing 
         • Press Enter twice for new paragraphs
       </div>
-      
-      <style jsx>{`
-        .editor-container .wiki-link {
-          color: #6699ff !important;
-          text-decoration: none;
-          border-bottom: 1px dotted #6699ff;
-          background: rgba(102, 153, 255, 0.1);
-          padding: 1px 3px;
-          border-radius: 2px;
-        }
-        
-        .editor-container .wiki-link-new {
-          color: #ff6666 !important;
-          text-decoration: none;
-          border-bottom: 1px dotted #ff6666;
-          background: rgba(255, 102, 102, 0.1);
-          padding: 1px 3px;
-          border-radius: 2px;
-        }
-        
-        .editor-container .wiki-link:hover,
-        .editor-container .wiki-link-new:hover {
-          opacity: 0.8;
-        }
-        
-        .editor-container h1 {
-          color: #ff6666 !important;
-          border-bottom: 2px solid #ff6666;
-          padding-bottom: 5px;
-          margin: 20px 0 10px 0;
-        }
-        
-        .editor-container h2 {
-          color: #ff6666 !important;
-          border-bottom: 1px solid #ff6666;
-          padding-bottom: 3px;
-          margin: 20px 0 10px 0;
-        }
-        
-        .editor-container h3 {
-          color: #ff6666 !important;
-          margin: 20px 0 10px 0;
-        }
-        
-        .editor-container ul, .editor-container ol {
-          margin: 10px 0;
-          padding-left: 25px;
-        }
-        
-        .editor-container li {
-          margin-bottom: 5px;
-        }
-        
-        .editor-container blockquote {
-          border-left: 3px solid #666;
-          margin: 15px 0;
-          padding: 10px 15px;
-          background: #f5f5f5;
-          font-style: italic;
-          color: #000;
-        }
-        
-        .editor-container p {
-          margin: 10px 0;
-        }
-        
-        .editor-container strong {
-          font-weight: bold;
-        }
-        
-        .editor-container em {
-          font-style: italic;
-        }
-        
-        .editor-container img {
-          max-width: 100%;
-          height: auto;
-          display: block;
-          margin: 10px 0;
-        }
-      `}</style>
     </div>
   )
 }

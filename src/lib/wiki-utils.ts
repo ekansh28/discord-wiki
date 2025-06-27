@@ -92,8 +92,151 @@ export function renderWikiMarkdown(content: string, existingPages: string[] = []
 
   let rendered = content
 
+  // Convert infoboxes {{Infobox|param=value|...}}
+  rendered = rendered.replace(/\{\{Infobox([\s\S]*?)\}\}/g, (match: string, content: string) => {
+    const lines = content.split('\n').map((line: string) => line.trim()).filter((line: string) => line.length > 0)
+    const params: Record<string, string> = {}
+    
+    // Parse infobox parameters
+    for (const line of lines) {
+      if (line.startsWith('|')) {
+        const cleanLine = line.substring(1).trim()
+        const equalIndex = cleanLine.indexOf('=')
+        if (equalIndex > 0) {
+          const key = cleanLine.substring(0, equalIndex).trim()
+          const value = cleanLine.substring(equalIndex + 1).trim()
+          params[key] = value
+        }
+      }
+    }
+
+    // Build infobox HTML
+    let infoboxHtml = '<div class="infobox">'
+    
+    // Title
+    if (params.title) {
+      infoboxHtml += `<div class="infobox-title">${params.title}</div>`
+    }
+    
+    // Image
+    if (params.image) {
+      const imageUrl = params.image.startsWith('http') 
+        ? params.image 
+        : `https://mbessirvgrfztivyftfl.supabase.co/storage/v1/object/public/wiki-files/${params.image}`
+      const caption = params.caption || ''
+      
+      infoboxHtml += `<div class="infobox-image">`
+      infoboxHtml += `<img src="${imageUrl}" alt="${caption}" />`
+      if (caption) {
+        infoboxHtml += `<div class="infobox-caption">${caption}</div>`
+      }
+      infoboxHtml += `</div>`
+    }
+    
+    // Data rows
+    const excludedKeys = ['title', 'image', 'caption']
+    for (const [key, value] of Object.entries(params)) {
+      if (!excludedKeys.includes(key) && value) {
+        const displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+        
+        // Process wiki links and external links in values
+        let processedValue = value
+        
+        // Process external links
+        processedValue = processedValue.replace(/\[([^[\]\s]+)\s+([^\]]+)\]/g, (match: string, url: string, displayText: string) => {
+          if (url.match(/^https?:\/\//)) {
+            return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="external-link">${displayText}</a>`
+          }
+          return match
+        })
+        
+        // Process wiki links
+        processedValue = processedValue.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match: string, pageName: string, displayText?: string) => {
+          if (pageName.startsWith('User:')) {
+            const slug = pageName.toLowerCase().replace(/\s+/g, '-').replace('user:', 'user-')
+            const display = displayText || pageName.replace('User:', '')
+            return `<a href="/wiki/${slug}" class="wiki-link">${display}</a>`
+          }
+          
+          const slug = pageName.toLowerCase().replace(/\s+/g, '-')
+          const display = displayText || pageName
+          const exists = existingPages.includes(slug)
+          const className = exists ? 'wiki-link' : 'wiki-link-new'
+          return `<a href="/wiki/${slug}" class="${className}">${display}</a>`
+        })
+        
+        infoboxHtml += `<div class="infobox-row">`
+        infoboxHtml += `<div class="infobox-label">${displayKey}</div>`
+        infoboxHtml += `<div class="infobox-value">${processedValue}</div>`
+        infoboxHtml += `</div>`
+      }
+    }
+    
+    infoboxHtml += '</div>'
+    return infoboxHtml
+  })
+
+  // Convert external links with custom text [https://example.com Display Text]
+  rendered = rendered.replace(/\[([^[\]\s]+)\s+([^\]]+)\]/g, (match, url, displayText) => {
+    const cleanUrl = url.trim()
+    const cleanDisplay = displayText.trim()
+    
+    // Check if it's a valid URL
+    if (cleanUrl.match(/^https?:\/\//)) {
+      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="external-link">${cleanDisplay}</a>`
+    }
+    
+    // If not a valid URL, return original text
+    return match
+  })
+
+  // Convert bold external links **[https://example.com Display Text]**
+  rendered = rendered.replace(/\*\*\[([^[\]\s]+)\s+([^\]]+)\]\*\*/g, (match, url, displayText) => {
+    const cleanUrl = url.trim()
+    const cleanDisplay = displayText.trim()
+    
+    if (cleanUrl.match(/^https?:\/\//)) {
+      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="external-link"><strong>${cleanDisplay}</strong></a>`
+    }
+    
+    return match
+  })
+
+  // Convert file attachments [[File:filename.ext|size|alt text]]
+  rendered = rendered.replace(/\[\[File:([^|\]]+)(?:\|([^|\]]+))?(?:\|([^\]]+))?\]\]/g, (match, filename, size, altText) => {
+    const cleanFilename = filename.trim()
+    const cleanSize = size ? size.trim() : ''
+    const cleanAlt = altText ? altText.trim() : cleanFilename
+    
+    // Generate Supabase storage URL
+    const storageUrl = `https://mbessirvgrfztivyftfl.supabase.co/storage/v1/object/public/wiki-files/${cleanFilename}`
+    
+    // Parse size if provided (e.g., "40x40px", "200px", "50%")
+    let sizeStyle = ''
+    if (cleanSize) {
+      if (cleanSize.includes('x') && cleanSize.includes('px')) {
+        // Format: "40x40px"
+        const [width, height] = cleanSize.replace('px', '').split('x')
+        sizeStyle = `width: ${width}px; height: ${height}px;`
+      } else if (cleanSize.includes('px')) {
+        // Format: "200px"
+        sizeStyle = `width: ${cleanSize};`
+      } else if (cleanSize.includes('%')) {
+        // Format: "50%"
+        sizeStyle = `width: ${cleanSize};`
+      }
+    }
+    
+    return `<img src="${storageUrl}" alt="${cleanAlt}" style="${sizeStyle} max-width: 100%; height: auto; display: inline-block; vertical-align: middle;" class="wiki-image" />`
+  })
+
   // Convert wiki links [[Page Name]] or [[Page Name|Display Text]]
   rendered = rendered.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (match, pageName, displayText) => {
+    // Skip if this looks like a File: or Category: link (already processed above)
+    if (pageName.startsWith('File:') || pageName.startsWith('Category:')) {
+      return match
+    }
+    
     const slug = slugify(pageName.trim())
     const display = displayText ? displayText.trim() : pageName.trim()
     const exists = existingPages.includes(slug)
@@ -114,7 +257,7 @@ export function renderWikiMarkdown(content: string, existingPages: string[] = []
     return `${hashes} <span id="${id}">${title.trim()}</span>`
   })
 
-  // Convert markdown-style formatting
+  // Convert bold and italic (but not inside links we've already processed)
   rendered = rendered.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
   rendered = rendered.replace(/\*([^*]+)\*/g, '<em>$1</em>')
   
@@ -220,4 +363,14 @@ export function validatePageTitle(title: string): { valid: boolean; error?: stri
   }
   
   return { valid: true }
+}
+
+// Helper function to get Supabase storage URL for files
+export function getStorageUrl(filename: string, bucket: string = 'wiki-files'): string {
+  return `https://mbessirvgrfztivyftfl.supabase.co/storage/v1/object/public/${bucket}/${filename}`
+}
+
+// Helper function to validate if a URL is external
+export function isExternalUrl(url: string): boolean {
+  return /^https?:\/\//.test(url)
 }
