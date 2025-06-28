@@ -32,15 +32,18 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [mounted, setMounted] = useState(false)
+  const [authError, setAuthError] = useState('')
 
-  // Optimized user profile creation/retrieval
+  // Create or get user profile with better error handling
   const createOrGetUserProfile = useCallback(async (authUser: User): Promise<UserProfile | null> => {
     try {
+      console.log('🔍 Looking for existing profile for user:', authUser.id)
+      
       // Try to get existing profile first
       const existingProfile = await OptimizedWikiAPI.getUserProfile(authUser.id)
       
       if (existingProfile) {
-        console.log('✅ User profile exists:', existingProfile)
+        console.log('✅ Found existing user profile:', existingProfile)
         setUserProfile(existingProfile)
         return existingProfile
       }
@@ -62,9 +65,11 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
       }
 
       console.log('👤 Creating new user profile for:', authUser.id)
+      
+      // Insert with conflict handling
       const { data: newProfile, error: createError } = await supabase
         .from('user_profiles')
-        .insert({
+        .upsert({
           id: authUser.id,
           username: getUsername(authUser),
           display_name: getDisplayName(authUser),
@@ -73,13 +78,16 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
           is_moderator: false,
           bio: null,
           edit_count: 0
+        }, { 
+          onConflict: 'id',
+          ignoreDuplicates: false 
         })
         .select()
         .single()
 
       if (createError) {
         console.error('❌ Error creating user profile:', createError)
-        setMessage('Error creating user profile')
+        setAuthError('Error creating user profile: ' + createError.message)
         return null
       }
 
@@ -88,70 +96,103 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
       return newProfile
     } catch (error) {
       console.error('❌ Error in createOrGetUserProfile:', error)
+      setAuthError('Failed to create user profile')
       return null
     }
   }, [])
 
-  // Fast authentication state initialization
+  // Initialize authentication
   const initializeAuth = useCallback(async () => {
     try {
-      const { user: currentUser, profile } = await OptimizedWikiAPI.getCurrentUser()
+      console.log('🚀 Initializing auth...')
+      const { data: { user: currentUser }, error } = await supabase.auth.getUser()
+      
+      if (error) {
+        console.error('Auth initialization error:', error)
+        setAuthError('Authentication error: ' + error.message)
+        return
+      }
       
       if (currentUser) {
+        console.log('👤 Found current user:', currentUser.email)
         setUser(currentUser)
-        if (profile) {
-          setUserProfile(profile)
-        } else {
-          // Create profile if it doesn't exist
-          await createOrGetUserProfile(currentUser)
+        
+        // Get or create profile
+        const profile = await createOrGetUserProfile(currentUser)
+        if (!profile) {
+          console.warn('⚠️ Could not get/create user profile')
         }
+      } else {
+        console.log('👤 No current user found')
       }
     } catch (error) {
-      console.error('Auth initialization error:', error)
+      console.error('❌ Auth initialization error:', error)
+      setAuthError('Failed to initialize authentication')
     }
   }, [createOrGetUserProfile])
 
-  // Optimized OAuth login
+  // OAuth login with better error handling
   const loginWithProvider = useCallback(async (provider: 'google' | 'discord') => {
     setLoading(true)
     setMessage('')
+    setAuthError('')
     
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      console.log(`🔑 Attempting OAuth login with ${provider}`)
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
           redirectTo: window.location.href,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
         },
       })
       
       if (error) {
         console.error('OAuth error:', error)
-        setMessage(error.message)
+        setAuthError(error.message)
+        setMessage('OAuth login failed: ' + error.message)
+      } else {
+        console.log('🎉 OAuth login initiated successfully')
+        setMessage(`Redirecting to ${provider} login...`)
       }
     } catch (error) {
       console.error('OAuth exception:', error)
+      setAuthError('An error occurred during login')
       setMessage('An error occurred during login')
     } finally {
       setLoading(false)
     }
   }, [])
 
-  // Optimized email authentication
+  // Email authentication with better validation
   const handleEmailAuth = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!email || !password) {
+    if (!email.trim() || !password.trim()) {
       setMessage('Please fill in all fields')
+      setAuthError('Missing email or password')
       return
     }
 
     if (password.length < 6) {
       setMessage('Password must be at least 6 characters')
+      setAuthError('Password too short')
+      return
+    }
+
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setMessage('Please enter a valid email address')
+      setAuthError('Invalid email format')
       return
     }
 
     setLoading(true)
     setMessage('')
+    setAuthError('')
 
     try {
       let result
@@ -159,53 +200,81 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
       if (activeTab === 'signup') {
         console.log('📝 Attempting to sign up:', email)
         result = await supabase.auth.signUp({
-          email,
-          password,
+          email: email.trim(),
+          password: password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/wiki/ballscord`
+          }
         })
         
         if (result.error) {
+          console.error('Signup error:', result.error)
+          setAuthError(result.error.message)
           setMessage(result.error.message)
         } else if (result.data?.user && !result.data.session) {
           setMessage('Check your email for verification link!')
+          console.log('📧 Verification email sent')
         } else if (result.data?.user && result.data.session) {
+          console.log('🎉 User signed up and logged in immediately')
           await createOrGetUserProfile(result.data.user)
           setMessage('Account created successfully!')
         }
       } else {
         console.log('🔑 Attempting to sign in:', email)
         result = await supabase.auth.signInWithPassword({
-          email,
-          password,
+          email: email.trim(),
+          password: password,
         })
         
         if (result.error) {
+          console.error('Signin error:', result.error)
+          setAuthError(result.error.message)
           setMessage(result.error.message)
         } else if (result.data?.user) {
+          console.log('🎉 User signed in successfully')
           await createOrGetUserProfile(result.data.user)
           setMessage('Signed in successfully!')
         }
       }
     } catch (error) {
       console.error('Auth error:', error)
-      setMessage('An error occurred')
+      setAuthError('An unexpected error occurred')
+      setMessage('An unexpected error occurred')
     } finally {
       setLoading(false)
     }
   }, [email, password, activeTab, createOrGetUserProfile])
 
-  // Fast logout
+  // Logout with cache clearing
   const logout = useCallback(async () => {
     console.log('👋 Signing out')
-    await supabase.auth.signOut()
-    setUser(null)
-    setUserProfile(null)
-    setMessage('')
+    setLoading(true)
     
-    // Clear auth-related caches
-    OptimizedWikiAPI.clearCache()
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('Logout error:', error)
+        setAuthError('Error signing out: ' + error.message)
+      } else {
+        setUser(null)
+        setUserProfile(null)
+        setMessage('')
+        setAuthError('')
+        
+        // Clear auth-related caches
+        OptimizedWikiAPI.clearCache()
+        
+        console.log('✅ Successfully signed out')
+      }
+    } catch (error) {
+      console.error('Logout exception:', error)
+      setAuthError('Failed to sign out')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  // Optimized display name getter
+  // Get display name with fallbacks
   const getDisplayName = useMemo(() => {
     if (!user) return ''
     
@@ -217,28 +286,30 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
     return 'User'
   }, [user, userProfile])
 
-  // Initialize authentication
+  // Initialize on mount
   useEffect(() => {
     setMounted(true)
     initializeAuth()
 
-    // Optimized auth state change listener
+    // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state changed:', event, session?.user?.email)
+      console.log('🔄 Auth state changed:', event, session?.user?.email || 'no user')
       
       if (session?.user) {
         setUser(session.user)
+        setAuthError('')
+        
+        // Get or create profile for the user
         await createOrGetUserProfile(session.user)
-        setMessage('')
         
         // Close popup after successful login
         if (isPopupMode && onClose) {
           setTimeout(() => {
             onClose()
-          }, 1000)
+          }, 1500)
         }
         
-        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+        if (event === 'SIGNED_IN') {
           setMessage('Signed in successfully!')
         }
       } else {
@@ -246,12 +317,32 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
         setUserProfile(null)
         if (event === 'SIGNED_OUT') {
           setMessage('')
+          setAuthError('')
         }
       }
     })
 
     return () => subscription.unsubscribe()
   }, [isPopupMode, onClose, initializeAuth, createOrGetUserProfile])
+
+  // Clear messages after delay
+  useEffect(() => {
+    if (message && !message.includes('Check your email')) {
+      const timer = setTimeout(() => {
+        setMessage('')
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [message])
+
+  useEffect(() => {
+    if (authError) {
+      const timer = setTimeout(() => {
+        setAuthError('')
+      }, 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [authError])
 
   // Show loading state during mount
   if (!mounted) {
@@ -277,6 +368,7 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
             onClick={() => {
               setActiveTab('signin')
               setMessage('')
+              setAuthError('')
             }}
           >
             Sign In
@@ -293,13 +385,14 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
             onClick={() => {
               setActiveTab('signup')
               setMessage('')
+              setAuthError('')
             }}
           >
             Sign Up
           </button>
         </div>
 
-        {/* OAuth buttons with optimized handlers */}
+        {/* OAuth buttons */}
         <button
           onClick={() => loginWithProvider('google')}
           disabled={loading}
@@ -343,7 +436,7 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
           ── OR ──
         </div>
 
-        {/* Optimized email/password form */}
+        {/* Email/password form */}
         <form onSubmit={handleEmailAuth}>
           <input
             type="email"
@@ -382,32 +475,50 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
           />
           <button 
             type="submit" 
-            disabled={loading || !email || !password}
+            disabled={loading || !email.trim() || !password.trim()}
             style={{
               width: '100%',
               padding: '4px 8px',
               fontSize: '11px',
               background: '#c0c0c0',
               border: '1px outset #c0c0c0',
-              cursor: (loading || !email || !password) ? 'not-allowed' : 'pointer',
-              opacity: (loading || !email || !password) ? 0.6 : 1
+              cursor: (loading || !email.trim() || !password.trim()) ? 'not-allowed' : 'pointer',
+              opacity: (loading || !email.trim() || !password.trim()) ? 0.6 : 1
             }}
           >
             {loading ? 'Loading...' : (activeTab === 'signin' ? '✅ Sign In' : '📝 Sign Up')}
           </button>
         </form>
 
-        {/* Message display with improved styling */}
-        {message && (
+        {/* Error display */}
+        {authError && (
           <div style={{ 
             fontSize: '10px', 
-            color: message.includes('Check your email') || message.includes('successfully') ? '#008000' : '#800000',
+            color: '#ff0000',
             marginTop: '8px',
             padding: '4px',
             border: '1px inset #c0c0c0',
-            background: '#f0f0f0',
+            background: '#ffe0e0',
             borderRadius: '2px'
           }}>
+            ❌ {authError}
+          </div>
+        )}
+
+        {/* Message display */}
+        {message && !authError && (
+          <div style={{ 
+            fontSize: '10px', 
+            color: message.includes('Check your email') || message.includes('successfully') ? '#008000' : '#0066cc',
+            marginTop: '8px',
+            padding: '4px',
+            border: '1px inset #c0c0c0',
+            background: message.includes('Check your email') || message.includes('successfully') ? '#e0ffe0' : '#e0f0ff',
+            borderRadius: '2px'
+          }}>
+            {message.includes('successfully') && '✅ '}
+            {message.includes('Check your email') && '📧 '}
+            {message.includes('Redirecting') && '🔄 '}
             {message}
           </div>
         )}
@@ -436,7 +547,7 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
             }} 
             style={{ color: '#80001c' }}
           >
-            Logout
+            {loading ? 'Logging out...' : 'Logout'}
           </a>
         </span>
       )}

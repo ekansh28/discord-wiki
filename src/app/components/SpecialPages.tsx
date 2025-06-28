@@ -1,3 +1,4 @@
+// src/app/components/SpecialPages.tsx
 'use client'
 
 import React, { useState, useEffect } from 'react'
@@ -43,12 +44,17 @@ export default function SpecialPages({ pageType }: SpecialPagesProps) {
           break
           
         case 'random':
-          // For random page, we'll get all pages and pick one randomly
+          // For random page, get all pages and pick one randomly
           const randomPages = await WikiAPI.getAllPages(1000)
           if (randomPages.length > 0) {
             const randomIndex = Math.floor(Math.random() * randomPages.length)
             const randomPage = randomPages[randomIndex]
+            // Navigate to the random page immediately
             window.location.href = `/wiki/${randomPage.slug}`
+            return // Don't set loading to false since we're navigating away
+          } else {
+            // No pages available, show message
+            setPages([])
           }
           break
       }
@@ -73,11 +79,43 @@ export default function SpecialPages({ pageType }: SpecialPagesProps) {
     change.edit_summary?.toLowerCase().includes(searchFilter.toLowerCase())
   )
 
+  const navigateToPage = (slug: string) => {
+    window.location.href = `/wiki/${slug}`
+  }
+
+  const navigateToCategory = (categoryName: string) => {
+    const slug = categoryName.toLowerCase().replace(/\s+/g, '-')
+    window.location.href = `/category/${slug}`
+  }
+
   if (loading) {
     return (
       <div className="content">
         <div style={{ textAlign: 'center', padding: '40px' }}>
-          Loading...
+          {pageType === 'random' ? (
+            <>
+              <h2 style={{ color: '#ff6666' }}>🎲 Finding Random Page...</h2>
+              <div style={{ marginTop: '20px', fontSize: '14px', color: '#888' }}>
+                <div style={{ 
+                  display: 'inline-block',
+                  width: '20px',
+                  height: '20px',
+                  border: '3px solid #666',
+                  borderTop: '3px solid #ff6666',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }}></div>
+              </div>
+              <style jsx>{`
+                @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+                }
+              `}</style>
+            </>
+          ) : (
+            'Loading...'
+          )}
         </div>
       </div>
     )
@@ -106,6 +144,13 @@ export default function SpecialPages({ pageType }: SpecialPagesProps) {
             <p>Latest changes to wiki pages.</p>
           </>
         )
+      case 'random':
+        return (
+          <>
+            <h1 style={{ color: '#ff6666' }}>🎲 Random Page</h1>
+            <p>Finding a random page for you...</p>
+          </>
+        )
       default:
         return <h1 style={{ color: '#ff6666' }}>Special Page</h1>
     }
@@ -131,6 +176,35 @@ export default function SpecialPages({ pageType }: SpecialPagesProps) {
               fontSize: '12px'
             }}
           />
+        </div>
+      )}
+
+      {/* Random Page Content */}
+      {pageType === 'random' && (
+        <div style={{ 
+          textAlign: 'center', 
+          padding: '40px', 
+          color: '#888',
+          background: '#111',
+          border: '1px solid #666'
+        }}>
+          <h3>🎲 Random Page Generator</h3>
+          <p>No pages found to randomize, or you've been redirected to a random page.</p>
+          <div style={{ marginTop: '20px' }}>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '8px 16px',
+                fontSize: '12px',
+                background: '#333',
+                border: '1px solid #666',
+                color: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              🔄 Try Again
+            </button>
+          </div>
         </div>
       )}
 
@@ -169,10 +243,10 @@ export default function SpecialPages({ pageType }: SpecialPagesProps) {
               <div>
                 <a 
                   href={`/wiki/${page.slug}`}
-                  style={{ color: '#6699ff', textDecoration: 'none' }}
+                  style={{ color: '#6699ff', textDecoration: 'none', cursor: 'pointer' }}
                   onClick={(e) => {
                     e.preventDefault()
-                    window.location.href = `/wiki/${page.slug}`
+                    navigateToPage(page.slug)
                   }}
                 >
                   {page.title}
@@ -237,7 +311,11 @@ export default function SpecialPages({ pageType }: SpecialPagesProps) {
               <div>
                 <a 
                   href={`/category/${category.name.toLowerCase().replace(/\s+/g, '-')}`}
-                  style={{ color: '#ffaa00', textDecoration: 'none', fontWeight: 'bold' }}
+                  style={{ color: '#ffaa00', textDecoration: 'none', fontWeight: 'bold', cursor: 'pointer' }}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    navigateToCategory(category.name)
+                  }}
                 >
                   {category.name}
                 </a>
@@ -246,7 +324,7 @@ export default function SpecialPages({ pageType }: SpecialPagesProps) {
                 {category.description || 'No description provided.'}
               </div>
               <div style={{ color: '#888' }}>
-                {category.page_count || 0} pages
+                {(category as any).page_count || 0} pages
               </div>
             </div>
           ))}
@@ -299,10 +377,12 @@ export default function SpecialPages({ pageType }: SpecialPagesProps) {
               <div>
                 <a 
                   href={`/wiki/${change.page?.slug}`}
-                  style={{ color: '#6699ff', textDecoration: 'none' }}
+                  style={{ color: '#6699ff', textDecoration: 'none', cursor: 'pointer' }}
                   onClick={(e) => {
                     e.preventDefault()
-                    window.location.href = `/wiki/${change.page?.slug}`
+                    if (change.page?.slug) {
+                      navigateToPage(change.page.slug)
+                    }
                   }}
                 >
                   {change.page?.title}
@@ -385,7 +465,7 @@ export default function SpecialPages({ pageType }: SpecialPagesProps) {
         </div>
       )}
 
-      {/* Quick Stats */}
+      {/* Quick Stats and Navigation */}
       <div style={{ 
         marginTop: '30px',
         padding: '15px',
@@ -400,11 +480,46 @@ export default function SpecialPages({ pageType }: SpecialPagesProps) {
         {pageType === 'recent-changes' && ` ${filteredChanges.length} recent changes`}
         
         <div style={{ marginTop: '8px' }}>
-          <a href="/wiki/main-page" style={{ color: '#6699ff', marginRight: '15px' }}>← Back to Main Page</a>
-          <a href="/wiki/special-allpages" style={{ color: '#6699ff', marginRight: '15px' }}>All Pages</a>
-          <a href="/wiki/special-categories" style={{ color: '#6699ff', marginRight: '15px' }}>Categories</a>
-          <a href="/wiki/special-recent-changes" style={{ color: '#6699ff', marginRight: '15px' }}>Recent Changes</a>
-          <a href="/wiki/special-random" style={{ color: '#6699ff' }}>Random Page</a>
+          <a 
+            href="/wiki/ballscord" 
+            style={{ color: '#6699ff', marginRight: '15px', cursor: 'pointer' }}
+            onClick={(e) => {
+              e.preventDefault()
+              navigateToPage('ballscord')
+            }}
+          >
+            ← Back to Main Page
+          </a>
+          <a 
+            href="/wiki/special-allpages" 
+            style={{ color: '#6699ff', marginRight: '15px', cursor: 'pointer' }}
+            onClick={(e) => {
+              e.preventDefault()
+              window.location.href = '/wiki/special-allpages'
+            }}
+          >
+            All Pages
+          </a>
+          <a 
+            href="/wiki/special-categories" 
+            style={{ color: '#6699ff', marginRight: '15px', cursor: 'pointer' }}
+            onClick={(e) => {
+              e.preventDefault()
+              window.location.href = '/wiki/special-categories'
+            }}
+          >
+            Categories
+          </a>
+          <a 
+            href="/wiki/special-recent-changes" 
+            style={{ color: '#6699ff', cursor: 'pointer' }}
+            onClick={(e) => {
+              e.preventDefault()
+              window.location.href = '/wiki/special-recent-changes'
+            }}
+          >
+            Recent Changes
+          </a>
         </div>
       </div>
     </div>

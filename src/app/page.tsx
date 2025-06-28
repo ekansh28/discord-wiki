@@ -36,6 +36,11 @@ export default function UltraFastHomePage() {
     setShowAuthPopup(false)
   }
 
+  // Navigation function for nav bar links
+  const navigateTo = (path: string) => {
+    window.location.href = path
+  }
+
   // Instant initialization phase
   useEffect(() => {
     // Phase 1: Instant setup (0ms)
@@ -75,13 +80,7 @@ export default function UltraFastHomePage() {
       // Ctrl/Cmd + / for help
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault()
-        SmartLoadingSystem.navigateTo('help-editing')
-      }
-      
-      // Alt + R for random page
-      if (e.altKey && e.key === 'r') {
-        e.preventDefault()
-        SmartLoadingSystem.navigateTo('special-random')
+        navigateTo('/wiki/help-editing')
       }
       
       // Escape to close popups
@@ -122,37 +121,30 @@ export default function UltraFastHomePage() {
       <nav>
         <a href="#" onClick={(e) => { 
           e.preventDefault(); 
-          SmartLoadingSystem.navigateTo('ballscord')
+          navigateTo('/wiki/ballscord')
         }}>
           🏠 Home
         </a>
         
         <a href="#" onClick={(e) => { 
           e.preventDefault(); 
-          SmartLoadingSystem.navigateTo('special-allpages')
+          navigateTo('/wiki/special-allpages')
         }}>
           📄 Pages
         </a>
         
         <a href="#" onClick={(e) => { 
           e.preventDefault(); 
-          SmartLoadingSystem.navigateTo('special-categories')
+          navigateTo('/wiki/special-categories')
         }}>
           📁 Categories
         </a>
         
         <a href="#" onClick={(e) => { 
           e.preventDefault(); 
-          SmartLoadingSystem.navigateTo('special-recent-changes')
+          navigateTo('/wiki/special-recent-changes')
         }}>
           📝 Recent Changes
-        </a>
-        
-        <a href="#" onClick={(e) => { 
-          e.preventDefault(); 
-          SmartLoadingSystem.navigateTo('special-random')
-        }}>
-          🎲 Random
         </a>
         
         {/* Optimized Auth component with instant fallback */}
@@ -281,7 +273,7 @@ export default function UltraFastHomePage() {
           ⚡ Ultra-Fast Loading v3.0 | Smart Caching & Instant Navigation
         </div>
         <div style={{ marginTop: '4px', fontSize: '9px', color: '#555' }}>
-          💡 Tips: Ctrl+K to search • Ctrl+/ for help • Alt+R for random • ESC to close
+          💡 Tips: Ctrl+K to search • Ctrl+/ for help • ESC to close
         </div>
         
         {/* Performance info for development */}
