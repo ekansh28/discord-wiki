@@ -1,8 +1,9 @@
-// src/app/components/AuthPopup.tsx
+// components/OptimizedAuthPopup.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
+import { OptimizedWikiAPI } from '@/lib/optimized-wiki-api'
 import { User } from '@supabase/supabase-js'
 
 interface AuthPopupProps {
@@ -22,7 +23,7 @@ interface UserProfile {
   edit_count: number
 }
 
-export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupProps) {
+export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: AuthPopupProps) {
   const [user, setUser] = useState<User | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [activeTab, setActiveTab] = useState<'signin' | 'signup'>('signin')
@@ -32,21 +33,19 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
   const [message, setMessage] = useState('')
   const [mounted, setMounted] = useState(false)
 
-  // Create or get user profile
-  const createOrGetUserProfile = async (authUser: User): Promise<UserProfile | null> => {
+  // Optimized user profile creation/retrieval
+  const createOrGetUserProfile = useCallback(async (authUser: User): Promise<UserProfile | null> => {
     try {
-      const { data: existingProfile, error: fetchError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single()
-
-      if (existingProfile && !fetchError) {
+      // Try to get existing profile first
+      const existingProfile = await OptimizedWikiAPI.getUserProfile(authUser.id)
+      
+      if (existingProfile) {
         console.log('✅ User profile exists:', existingProfile)
         setUserProfile(existingProfile)
         return existingProfile
       }
 
+      // Create new profile if doesn't exist
       const getDisplayName = (user: User) => {
         if (user.user_metadata?.full_name) return user.user_metadata.full_name
         if (user.user_metadata?.name) return user.user_metadata.name
@@ -91,49 +90,29 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
       console.error('❌ Error in createOrGetUserProfile:', error)
       return null
     }
-  }
+  }, [])
 
-  useEffect(() => {
-    setMounted(true)
-    
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (data?.user) {
-        setUser(data.user)
-        await createOrGetUserProfile(data.user)
-      }
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state changed:', event, session?.user?.email)
+  // Fast authentication state initialization
+  const initializeAuth = useCallback(async () => {
+    try {
+      const { user: currentUser, profile } = await OptimizedWikiAPI.getCurrentUser()
       
-      if (session?.user) {
-        setUser(session.user)
-        await createOrGetUserProfile(session.user)
-        setMessage('')
-        
-        // Close popup after successful login
-        if (isPopupMode && onClose) {
-          setTimeout(() => {
-            onClose()
-          }, 1000)
-        }
-        
-        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
-          setMessage('Signed in successfully!')
-        }
-      } else {
-        setUser(null)
-        setUserProfile(null)
-        if (event === 'SIGNED_OUT') {
-          setMessage('')
+      if (currentUser) {
+        setUser(currentUser)
+        if (profile) {
+          setUserProfile(profile)
+        } else {
+          // Create profile if it doesn't exist
+          await createOrGetUserProfile(currentUser)
         }
       }
-    })
+    } catch (error) {
+      console.error('Auth initialization error:', error)
+    }
+  }, [createOrGetUserProfile])
 
-    return () => subscription.unsubscribe()
-  }, [isPopupMode, onClose])
-
-  const loginWithProvider = async (provider: 'google' | 'discord') => {
+  // Optimized OAuth login
+  const loginWithProvider = useCallback(async (provider: 'google' | 'discord') => {
     setLoading(true)
     setMessage('')
     
@@ -144,6 +123,7 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
           redirectTo: window.location.href,
         },
       })
+      
       if (error) {
         console.error('OAuth error:', error)
         setMessage(error.message)
@@ -151,12 +131,15 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
     } catch (error) {
       console.error('OAuth exception:', error)
       setMessage('An error occurred during login')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-  }
+  }, [])
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
+  // Optimized email authentication
+  const handleEmailAuth = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
+    
     if (!email || !password) {
       setMessage('Please fill in all fields')
       return
@@ -172,6 +155,7 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
 
     try {
       let result
+      
       if (activeTab === 'signup') {
         console.log('📝 Attempting to sign up:', email)
         result = await supabase.auth.signUp({
@@ -204,33 +188,77 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
     } catch (error) {
       console.error('Auth error:', error)
       setMessage('An error occurred')
+    } finally {
+      setLoading(false)
     }
-    
-    setLoading(false)
-  }
+  }, [email, password, activeTab, createOrGetUserProfile])
 
-  const logout = async () => {
+  // Fast logout
+  const logout = useCallback(async () => {
     console.log('👋 Signing out')
     await supabase.auth.signOut()
     setUser(null)
     setUserProfile(null)
     setMessage('')
-  }
+    
+    // Clear auth-related caches
+    OptimizedWikiAPI.clearCache()
+  }, [])
 
-  const getDisplayName = (user: User) => {
+  // Optimized display name getter
+  const getDisplayName = useMemo(() => {
+    if (!user) return ''
+    
     if (userProfile?.display_name) return userProfile.display_name
     if (userProfile?.username) return userProfile.username
     if (user.user_metadata?.full_name) return user.user_metadata.full_name
     if (user.user_metadata?.name) return user.user_metadata.name
     if (user.email) return user.email.split('@')[0]
     return 'User'
-  }
+  }, [user, userProfile])
 
+  // Initialize authentication
+  useEffect(() => {
+    setMounted(true)
+    initializeAuth()
+
+    // Optimized auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 Auth state changed:', event, session?.user?.email)
+      
+      if (session?.user) {
+        setUser(session.user)
+        await createOrGetUserProfile(session.user)
+        setMessage('')
+        
+        // Close popup after successful login
+        if (isPopupMode && onClose) {
+          setTimeout(() => {
+            onClose()
+          }, 1000)
+        }
+        
+        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+          setMessage('Signed in successfully!')
+        }
+      } else {
+        setUser(null)
+        setUserProfile(null)
+        if (event === 'SIGNED_OUT') {
+          setMessage('')
+        }
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [isPopupMode, onClose, initializeAuth, createOrGetUserProfile])
+
+  // Show loading state during mount
   if (!mounted) {
     return <span>Login</span>
   }
 
-  // If in popup mode, show the auth form directly
+  // Popup mode rendering
   if (isPopupMode) {
     return (
       <div style={{ width: '100%' }}>
@@ -271,7 +299,7 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
           </button>
         </div>
 
-        {/* OAuth buttons */}
+        {/* OAuth buttons with optimized handlers */}
         <button
           onClick={() => loginWithProvider('google')}
           disabled={loading}
@@ -282,7 +310,8 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
             fontSize: '11px',
             background: '#c0c0c0',
             border: '1px outset #c0c0c0',
-            cursor: 'pointer'
+            cursor: loading ? 'not-allowed' : 'pointer',
+            opacity: loading ? 0.6 : 1
           }}
         >
           {loading ? 'Loading...' : '🔍 Continue with Google'}
@@ -298,7 +327,8 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
             fontSize: '11px',
             background: '#c0c0c0',
             border: '1px outset #c0c0c0',
-            cursor: 'pointer'
+            cursor: loading ? 'not-allowed' : 'pointer',
+            opacity: loading ? 0.6 : 1
           }}
         >
           {loading ? 'Loading...' : '🎮 Continue with Discord'}
@@ -313,7 +343,7 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
           ── OR ──
         </div>
 
-        {/* Email/Password form */}
+        {/* Optimized email/password form */}
         <form onSubmit={handleEmailAuth}>
           <input
             type="email"
@@ -322,6 +352,7 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
             onChange={(e) => setEmail(e.target.value)}
             disabled={loading}
             required
+            autoComplete="email"
             style={{
               width: '100%',
               padding: '2px 4px',
@@ -339,6 +370,7 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
             disabled={loading}
             minLength={6}
             required
+            autoComplete={activeTab === 'signup' ? 'new-password' : 'current-password'}
             style={{
               width: '100%',
               padding: '2px 4px',
@@ -357,14 +389,15 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
               fontSize: '11px',
               background: '#c0c0c0',
               border: '1px outset #c0c0c0',
-              cursor: 'pointer'
+              cursor: (loading || !email || !password) ? 'not-allowed' : 'pointer',
+              opacity: (loading || !email || !password) ? 0.6 : 1
             }}
           >
             {loading ? 'Loading...' : (activeTab === 'signin' ? '✅ Sign In' : '📝 Sign Up')}
           </button>
         </form>
 
-        {/* Message display */}
+        {/* Message display with improved styling */}
         {message && (
           <div style={{ 
             fontSize: '10px', 
@@ -372,7 +405,8 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
             marginTop: '8px',
             padding: '4px',
             border: '1px inset #c0c0c0',
-            background: '#f0f0f0'
+            background: '#f0f0f0',
+            borderRadius: '2px'
           }}>
             {message}
           </div>
@@ -390,11 +424,20 @@ export default function AuthPopup({ isPopupMode = false, onClose }: AuthPopupPro
         </span>
       ) : (
         <span className="user-info">
-          {getDisplayName(user)}
+          {getDisplayName}
           {userProfile?.is_admin && <span style={{ color: '#ff6666' }}> [Admin]</span>}
           {userProfile?.is_moderator && !userProfile?.is_admin && <span style={{ color: '#ffaa00' }}> [Mod]</span>}
           {' | '}
-          <a href="#" onClick={(e) => { e.preventDefault(); logout() }} style={{ color: '#80001c' }}>Logout</a>
+          <a 
+            href="#" 
+            onClick={(e) => { 
+              e.preventDefault(); 
+              logout() 
+            }} 
+            style={{ color: '#80001c' }}
+          >
+            Logout
+          </a>
         </span>
       )}
     </>

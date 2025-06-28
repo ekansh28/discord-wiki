@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { WikiAPI } from '@/lib/wiki-api'
+import { WikiAPI } from '@/lib/optimized-wiki-api'
 import { Page, PageRevision, UserProfile, TableOfContentsItem,Category, PendingChange, PageSummary } from '@/types/wiki'
 
 import { generateTableOfContents, renderWikiMarkdown, formatDate, timeSince, validatePageTitle, slugify } from '@/lib/wiki-utils'

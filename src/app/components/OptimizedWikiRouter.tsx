@@ -1,9 +1,9 @@
-// src/app/components/EnhancedWikiRouter.tsx
+// components/OptimizedWikiRouter.tsx
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, ReactElement } from 'react'
 import { supabase } from '@/lib/supabase'
-import { WikiAPI } from '@/lib/wiki-api'
+import { OptimizedWikiAPI } from '@/lib/optimized-wiki-api'
 import { Page, PageRevision, UserProfile, Category, PendingChange, PageSummary } from '@/types/wiki'
 import VisualEditor from './VisualEditor'
 import AdminPanel from './AdminPanel'
@@ -11,16 +11,62 @@ import SpecialPages from './SpecialPages'
 import CategoryPage from './CategoryPage'
 import { generateTableOfContents, renderWikiMarkdown, slugify, validatePageTitle } from '@/lib/wiki-utils'
 
-interface EnhancedWikiRouterProps {
+interface OptimizedWikiRouterProps {
   onShowAuthPopup: () => void
 }
 
-export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRouterProps) {
+// Performance monitoring
+const usePerformanceMonitor = () => {
+  const [metrics, setMetrics] = useState({
+    pageLoadTime: 0,
+    authCheckTime: 0,
+    searchTime: 0
+  })
+
+  const recordMetric = useCallback((key: string, time: number) => {
+    setMetrics(prev => ({ ...prev, [key]: time }))
+  }, [])
+
+  return { metrics, recordMetric }
+}
+
+// Debounced search hook
+const useDebounceSearch = (callback: (query: string) => void, delay: number) => {
+  const [debounceTimer, setDebounceTimer] = useState<NodeJS.Timeout | null>(null)
+
+  const debouncedCallback = useCallback((query: string) => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+    }
+
+    const timer = setTimeout(() => {
+      callback(query)
+    }, delay)
+
+    setDebounceTimer(timer)
+  }, [callback, delay, debounceTimer])
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer)
+      }
+    }
+  }, [debounceTimer])
+
+  return debouncedCallback
+}
+
+export default function OptimizedWikiRouter({ onShowAuthPopup }: OptimizedWikiRouterProps) {
+  // Performance monitoring
+  const { metrics, recordMetric } = usePerformanceMonitor()
+
   // Core state
-  const [currentView, setCurrentView] = useState('ballscord') // Changed to ballscord as main page
+  const [currentView, setCurrentView] = useState('ballscord')
   const [user, setUser] = useState<any>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [initializing, setInitializing] = useState(true)
   
   // Page state
   const [currentPage, setCurrentPage] = useState<Page | null>(null)
@@ -36,7 +82,7 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
   const [editorMode, setEditorMode] = useState<'visual' | 'source'>('visual')
   const [saving, setSaving] = useState(false)
   
-  // Wiki data
+  // Wiki data with caching
   const [allPageSlugs, setAllPageSlugs] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<PageSummary[]>([])
@@ -46,36 +92,50 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
   const [tableOfContents, setTableOfContents] = useState<any[]>([])
   const [showToc, setShowToc] = useState(true)
 
-  useEffect(() => {
-    setMounted(true)
-    initializeApp()
-    handleRoute()
+  // Memoized route handler
+  const handleRoute = useCallback(() => {
+    const path = window.location.pathname
+    let view = 'ballscord'
     
-    // Handle browser navigation
-    const handlePopState = () => handleRoute()
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
+    if (path.startsWith('/wiki/')) {
+      view = path.slice(6) || 'ballscord'
+    } else if (path.startsWith('/category/')) {
+      view = 'category:' + path.slice(10)
+    } else if (path === '/') {
+      view = 'ballscord'
+    }
+    
+    setCurrentView(view)
+    loadPage(view)
   }, [])
 
-  const initializeApp = async () => {
+  // Fast initialization with parallel loading
+  const initializeApp = useCallback(async () => {
+    const authStart = performance.now()
+    
     try {
-      // Get current user
-      const { data: userData } = await supabase.auth.getUser()
-      if (userData?.user) {
-        setUser(userData.user)
-        const profile = await WikiAPI.getUserProfile(userData.user.id)
-        setUserProfile(profile)
+      // Load user and page slugs in parallel
+      const [authResult, slugsResult] = await Promise.all([
+        OptimizedWikiAPI.getCurrentUser(),
+        OptimizedWikiAPI.getAllPageSlugs()
+      ])
+
+      recordMetric('authCheckTime', performance.now() - authStart)
+      
+      // Set auth state
+      if (authResult.user) {
+        setUser(authResult.user)
+        setUserProfile(authResult.profile)
       }
 
-      // Load all page slugs for link validation
-      const slugs = await WikiAPI.getAllPageSlugs()
-      setAllPageSlugs(slugs)
+      // Set page slugs
+      setAllPageSlugs(slugsResult)
 
-      // Listen for auth changes
+      // Listen for auth changes with optimized handling
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (session?.user) {
           setUser(session.user)
-          const profile = await WikiAPI.getUserProfile(session.user.id)
+          const profile = await OptimizedWikiAPI.getUserProfile(session.user.id)
           setUserProfile(profile)
         } else {
           setUser(null)
@@ -86,58 +146,46 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
       return () => subscription.unsubscribe()
     } catch (error) {
       console.error('Error initializing app:', error)
+      setError('Failed to initialize wiki')
+    } finally {
+      setInitializing(false)
     }
-  }
+  }, [recordMetric])
 
-  const handleRoute = () => {
-    const path = window.location.pathname
-    let view = 'ballscord' // Default to ballscord instead of main-page
+  // Optimized page loading
+  const loadPage = useCallback(async (slug: string) => {
+    const pageStart = performance.now()
     
-    if (path.startsWith('/wiki/')) {
-      view = path.slice(6) || 'ballscord'
-    } else if (path.startsWith('/category/')) {
-      view = 'category:' + path.slice(10)
-    } else if (path === '/') {
-      view = 'ballscord' // Homepage shows ballscord
-    }
-    
-    setCurrentView(view)
-    loadPage(view)
-  }
-
-  const loadPage = async (slug: string) => {
     try {
       setLoading(true)
       setError('')
       
       // Handle special pages
-      if (slug.startsWith('special-')) {
+      if (slug.startsWith('special-') || slug.startsWith('category:')) {
         setCurrentPage(null)
         setLoading(false)
         return
       }
       
-      // Handle category pages
-      if (slug.startsWith('category:')) {
-        setCurrentPage(null)
-        setLoading(false)
-        return
-      }
+      // Load page with cache
+      const page = await OptimizedWikiAPI.getPage(slug)
       
-      const page = await WikiAPI.getPage(slug)
+      recordMetric('pageLoadTime', performance.now() - pageStart)
       
       if (page) {
         setCurrentPage(page)
         setEditTitle(page.title)
         setEditContent(page.content || '')
         
-        // Generate table of contents
-        if (page.content) {
-          const toc = generateTableOfContents(page.content)
-          setTableOfContents(toc)
-        } else {
-          setTableOfContents([])
-        }
+        // Generate table of contents asynchronously
+        setTimeout(() => {
+          if (page.content) {
+            const toc = generateTableOfContents(page.content)
+            setTableOfContents(toc)
+          } else {
+            setTableOfContents([])
+          }
+        }, 0)
       } else {
         // Page doesn't exist
         setCurrentPage(null)
@@ -151,9 +199,10 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
     } finally {
       setLoading(false)
     }
-  }
+  }, [recordMetric])
 
-  const navigateTo = (path: string) => {
+  // Optimized navigation
+  const navigateTo = useCallback((path: string) => {
     const fullPath = path.startsWith('/') ? path : `/wiki/${path}`
     window.history.pushState({}, '', fullPath)
     setCurrentView(path.replace('/wiki/', ''))
@@ -161,20 +210,50 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
     setSearchQuery('')
     setSearchResults([])
     setShowSearch(false)
-  }
+  }, [loadPage])
 
-  const startEditing = () => {
+  // Debounced search function
+  const performSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([])
+      setShowSearch(false)
+      return
+    }
+
+    const searchStart = performance.now()
+    
+    try {
+      const results = await OptimizedWikiAPI.searchPages(query)
+      setSearchResults(results)
+      setShowSearch(true)
+      
+      recordMetric('searchTime', performance.now() - searchStart)
+    } catch (err) {
+      console.error('Search error:', err)
+    }
+  }, [recordMetric])
+
+  const debouncedSearch = useDebounceSearch(performSearch, 300)
+
+  // Search handler
+  const searchPages = useCallback((query: string) => {
+    setSearchQuery(query)
+    debouncedSearch(query)
+  }, [debouncedSearch])
+
+  // Editor functions
+  const startEditing = useCallback(() => {
     if (!user) {
       setError('')
-      onShowAuthPopup() // Show auth popup instead of just showing error
+      onShowAuthPopup()
       return
     }
     setIsEditing(true)
     setError('')
     setSuccess('')
-  }
+  }, [user, onShowAuthPopup])
 
-  const cancelEditing = () => {
+  const cancelEditing = useCallback(() => {
     setIsEditing(false)
     if (currentPage) {
       setEditTitle(currentPage.title)
@@ -183,9 +262,9 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
     setEditSummary('')
     setError('')
     setSuccess('')
-  }
+  }, [currentPage])
 
-  const saveChanges = async () => {
+  const saveChanges = useCallback(async () => {
     if (!user) {
       setError('')
       onShowAuthPopup()
@@ -209,93 +288,76 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
 
       const slug = slugify(editTitle)
       
-      if (currentPage) {
-        // Update existing page
-        await WikiAPI.updatePage(
-          currentPage.id,
-          editTitle,
-          editContent,
-          editSummary,
-          user.id,
-          userProfile?.is_admin || userProfile?.is_moderator || false
-        )
-        
-        if (userProfile?.is_admin || userProfile?.is_moderator) {
-          setSuccess('Page updated successfully!')
-          // Navigate to the new page if slug changed
-          if (slug !== currentView) {
-            navigateTo(slug)
-          } else {
-            // Reload current page
-            await loadPage(slug)
-          }
+      const result = await OptimizedWikiAPI.savePage(
+        slug,
+        editTitle,
+        editContent,
+        editSummary,
+        user.id,
+        userProfile?.is_admin || userProfile?.is_moderator || false
+      )
+      
+      if (!result.success) {
+        setError(result.error || 'Failed to save changes')
+        return
+      }
+
+      if (userProfile?.is_admin || userProfile?.is_moderator) {
+        setSuccess('Page updated successfully!')
+        if (slug !== currentView) {
+          navigateTo(slug)
         } else {
-          setSuccess('Changes submitted for review!')
+          await loadPage(slug)
         }
       } else {
-        // Create new page
-        await WikiAPI.createPage(editTitle, editContent, editSummary, user.id)
-        setSuccess('Page created successfully!')
-        // Navigate to the new page
-        navigateTo(slug)
+        setSuccess('Changes submitted for review!')
       }
 
       setIsEditing(false)
       setEditSummary('')
       
       // Update page slugs cache
-      const newSlugs = await WikiAPI.getAllPageSlugs()
+      const newSlugs = await OptimizedWikiAPI.getAllPageSlugs()
       setAllPageSlugs(newSlugs)
     } catch (err: any) {
       setError(err.message || 'Failed to save changes')
     } finally {
       setSaving(false)
     }
-  }
+  }, [user, userProfile, editTitle, editContent, editSummary, currentView, navigateTo, loadPage, onShowAuthPopup])
 
-  const searchPages = async (query: string) => {
-    setSearchQuery(query)
-    if (!query.trim()) {
-      setSearchResults([])
-      setShowSearch(false)
-      return
-    }
-
-    try {
-      const results = await WikiAPI.searchPages(query)
-      setSearchResults(results)
-      setShowSearch(true)
-    } catch (err) {
-      console.error('Search error:', err)
-    }
-  }
-
-  const clearMessages = () => {
+  const clearMessages = useCallback(() => {
     setError('')
     setSuccess('')
-  }
+  }, [])
 
-  const renderTableOfContents = (items: any[], level = 0) => {
-    return items.map(item => (
-      <div key={item.id} style={{ marginLeft: `${level * 15}px` }}>
-        <a 
-          href={`#${item.id}`} 
-          className="toc-link"
-          onClick={(e) => {
-            e.preventDefault()
-            document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' })
-          }}
-        >
-          {item.title}
-        </a>
-        {item.children && item.children.length > 0 && (
-          <div>{renderTableOfContents(item.children, level + 1)}</div>
-        )}
-      </div>
-    ))
-  }
+  // Memoized table of contents renderer
+  const renderTableOfContents = useMemo(() => {
+    const renderItems = (items: any[], level = 0): ReactElement[] => {
+      return items.map(item => (
+        <div key={item.id} style={{ marginLeft: `${level * 15}px` }}>
+          <a 
+            href={`#${item.id}`} 
+            className="toc-link"
+            onClick={(e) => {
+              e.preventDefault()
+              document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' })
+            }}
+          >
+            {item.title}
+          </a>
+          {item.children && item.children.length > 0 && (
+            <div>{renderItems(item.children, level + 1)}</div>
+          )}
+        </div>
+      ))
+    }
+    
+    return renderItems
+  }, [])
 
-  const renderSpecialPage = () => {
+  // Memoized special page renderer
+  const renderSpecialPage = useMemo((): ReactElement | null => {
     if (currentView === 'special-admin') {
       return <AdminPanel userProfile={userProfile} />
     }
@@ -317,17 +379,41 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
     }
 
     return null
-  }
+  }, [currentView, userProfile])
 
-  if (!mounted) {
-    return <div className="main">Loading wiki...</div>
+  // Initialize on mount
+  useEffect(() => {
+    setMounted(true)
+    initializeApp()
+    handleRoute()
+    
+    // Handle browser navigation
+    const handlePopState = () => handleRoute()
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [initializeApp, handleRoute])
+
+  // Show loading screen during initialization
+  if (!mounted || initializing) {
+    return (
+      <div className="main">
+        <div className="content">
+          <div style={{ textAlign: 'center', padding: '40px' }}>
+            <div style={{ marginBottom: '20px' }}>Loading wiki...</div>
+            <div style={{ fontSize: '12px', color: '#888' }}>
+              Initializing optimized caching system...
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // Handle special pages
   if (currentView.startsWith('special-')) {
     return (
       <div className="main">
-        <div className="sidebar" style={{ width: '175px' }}> {/* Reduced from 250px to 175px (30% reduction) */}
+        <div className="sidebar" style={{ width: '175px' }}>
           <div className="sidebar-section">
             <h3>🧭 Navigation</h3>
             <ul style={{ listStyle: 'none', padding: 0 }}>
@@ -341,8 +427,20 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
               )}
             </ul>
           </div>
+          
+          {/* Performance metrics for development */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="sidebar-section">
+              <h3>⚡ Performance</h3>
+              <div style={{ fontSize: '10px', color: '#888' }}>
+                <div>Page Load: {metrics.pageLoadTime.toFixed(1)}ms</div>
+                <div>Auth Check: {metrics.authCheckTime.toFixed(1)}ms</div>
+                <div>Search: {metrics.searchTime.toFixed(1)}ms</div>
+              </div>
+            </div>
+          )}
         </div>
-        {renderSpecialPage()}
+        {renderSpecialPage}
       </div>
     )
   }
@@ -375,7 +473,7 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
   // Render main wiki page
   return (
     <div className="main">
-      {/* Sidebar - Reduced width */}
+      {/* Sidebar */}
       <div className="sidebar" style={{ width: '175px' }}>
         {/* Search */}
         <div className="sidebar-section">
@@ -384,10 +482,7 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
             type="text"
             placeholder="Search pages..."
             value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value)
-              searchPages(e.target.value)
-            }}
+            onChange={(e) => searchPages(e.target.value)}
             style={{
               width: '100%',
               padding: '4px',
@@ -470,13 +565,29 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
             </div>
           </div>
         )}
+
+        {/* Performance metrics for development */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="sidebar-section">
+            <h3>⚡ Performance</h3>
+            <div style={{ fontSize: '10px', color: '#888' }}>
+              <div>Page Load: {metrics.pageLoadTime.toFixed(1)}ms</div>
+              <div>Auth Check: {metrics.authCheckTime.toFixed(1)}ms</div>
+              <div>Search: {metrics.searchTime.toFixed(1)}ms</div>
+              <div>Cache: {OptimizedWikiAPI.getCacheStats().memoryKeys} keys</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Content */}
       <div className="content">
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
-            Loading...
+            <div>Loading...</div>
+            <div style={{ fontSize: '11px', color: '#888', marginTop: '10px' }}>
+              Using optimized caching for faster loads
+            </div>
           </div>
         ) : (
           <>
@@ -518,6 +629,18 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
                 border: '1px solid #ff0000'
               }}>
                 {error}
+                <button 
+                  onClick={clearMessages}
+                  style={{ 
+                    float: 'right', 
+                    background: 'none', 
+                    border: 'none', 
+                    color: '#fff', 
+                    cursor: 'pointer' 
+                  }}
+                >
+                  ×
+                </button>
               </div>
             )}
 
@@ -530,6 +653,18 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
                 border: '1px solid #00ff00'
               }}>
                 {success}
+                <button 
+                  onClick={clearMessages}
+                  style={{ 
+                    float: 'right', 
+                    background: 'none', 
+                    border: 'none', 
+                    color: '#fff', 
+                    cursor: 'pointer' 
+                  }}
+                >
+                  ×
+                </button>
               </div>
             )}
 
@@ -545,35 +680,6 @@ export default function EnhancedWikiRouter({ onShowAuthPopup }: EnhancedWikiRout
                     type="text"
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '4px',
-                      border: '1px inset #c0c0c0',
-                      background: '#fff',
-                      fontSize: '12px'
-                    }}
-                  />
-                </div>
-
-                {/* Enhanced Visual Editor */}
-                <VisualEditor
-                  content={editContent}
-                  onChange={setEditContent}
-                  onModeChange={setEditorMode}
-                  mode={editorMode}
-                  existingPages={allPageSlugs}
-                />
-
-                {/* Edit Summary */}
-                <div style={{ marginTop: '10px' }}>
-                  <label style={{ display: 'block', marginBottom: '4px', color: '#ccc' }}>
-                    Edit Summary:
-                  </label>
-                  <input
-                    type="text"
-                    value={editSummary}
-                    onChange={(e) => setEditSummary(e.target.value)}
-                    placeholder="Describe your changes..."
                     style={{
                       width: '100%',
                       padding: '4px',

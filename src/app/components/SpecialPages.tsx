@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { WikiAPI } from '@/lib/wiki-api'
+import { WikiAPI } from '@/lib/optimized-wiki-api'
 import { Page, PageRevision, Category } from '@/types/wiki'
 import { formatDate, timeSince } from '@/lib/wiki-utils'
 
