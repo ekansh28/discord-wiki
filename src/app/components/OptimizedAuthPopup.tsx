@@ -100,36 +100,33 @@ export default function OptimizedAuthPopup({ isPopupMode = false, onClose }: Aut
       return null
     }
   }, [])
+  
+const initializeAuth = useCallback(async () => {
+  try {
+    console.log('🚀 Initializing auth...')
 
-  // Initialize authentication
-  const initializeAuth = useCallback(async () => {
-    try {
-      console.log('🚀 Initializing auth...')
-      const { data: { user: currentUser }, error } = await supabase.auth.getUser()
-      
-      if (error) {
-        console.error('Auth initialization error:', error)
-        setAuthError('Authentication error: ' + error.message)
-        return
-      }
-      
-      if (currentUser) {
-        console.log('👤 Found current user:', currentUser.email)
-        setUser(currentUser)
-        
-        // Get or create profile
-        const profile = await createOrGetUserProfile(currentUser)
-        if (!profile) {
-          console.warn('⚠️ Could not get/create user profile')
-        }
-      } else {
-        console.log('👤 No current user found')
-      }
-    } catch (error) {
-      console.error('❌ Auth initialization error:', error)
-      setAuthError('Failed to initialize authentication')
+    const { data: { session }, error } = await supabase.auth.getSession()
+
+    if (error || !session?.user) {
+      console.warn('⚠️ No session found or error:', error)
+      setAuthError('Authentication error: ' + (error?.message || 'No active session'))
+      return
     }
-  }, [createOrGetUserProfile])
+
+    const currentUser = session.user
+    console.log('👤 Found current user:', currentUser.email)
+    setUser(currentUser)
+
+    const profile = await createOrGetUserProfile(currentUser)
+    if (!profile) {
+      console.warn('⚠️ Could not get/create user profile')
+    }
+  } catch (error) {
+    console.error('❌ Auth initialization error:', error)
+    setAuthError('Failed to initialize authentication')
+  }
+}, [createOrGetUserProfile])
+
 
   // OAuth login with better error handling
   const loginWithProvider = useCallback(async (provider: 'google' | 'discord') => {
