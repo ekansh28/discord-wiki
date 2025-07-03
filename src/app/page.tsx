@@ -114,7 +114,7 @@ export default function UltraFastHomePage() {
           fontSize: '10px',
           color: '#888'
         }}>
-          ⚡ Ultra-Fast
+       
         </div>
       </header>
 
@@ -270,7 +270,7 @@ export default function UltraFastHomePage() {
       <footer>
         By Ekansh | please give me <a href="https://paypal.me/ekansh32" target="_blank" rel="noopener noreferrer">money</a> | made for ballscord
         <div style={{ marginTop: '8px', fontSize: '9px', color: '#666' }}>
-          ⚡ Ultra-Fast Loading v3.0 | Smart Caching & Instant Navigation
+           meow
         </div>
         <div style={{ marginTop: '4px', fontSize: '9px', color: '#555' }}>
           💡 Tips: Ctrl+K to search • Ctrl+/ for help • ESC to close
