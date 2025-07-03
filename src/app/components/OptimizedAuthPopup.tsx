@@ -283,44 +283,48 @@ const initializeAuth = useCallback(async () => {
     return 'User'
   }, [user, userProfile])
 
-  // Initialize on mount
-  useEffect(() => {
-    setMounted(true)
-    initializeAuth()
+ useEffect(() => {
+  setMounted(true)
 
-    // Set up auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state changed:', event, session?.user?.email || 'no user')
-      
+  // Set up auth state change listener
+  const {
+    data: { subscription }
+  } = supabase.auth.onAuthStateChange(async (event, session) => {
+    console.log('🔄 Auth state changed:', event, session?.user?.email || 'no user')
+
+    if (event === 'INITIAL_SESSION') {
       if (session?.user) {
         setUser(session.user)
-        setAuthError('')
-        
-        // Get or create profile for the user
         await createOrGetUserProfile(session.user)
-        
-        // Close popup after successful login
-        if (isPopupMode && onClose) {
-          setTimeout(() => {
-            onClose()
-          }, 1500)
-        }
-        
-        if (event === 'SIGNED_IN') {
-          setMessage('Signed in successfully!')
-        }
       } else {
         setUser(null)
         setUserProfile(null)
-        if (event === 'SIGNED_OUT') {
-          setMessage('')
-          setAuthError('')
-        }
       }
-    })
+      return
+    }
 
-    return () => subscription.unsubscribe()
-  }, [isPopupMode, onClose, initializeAuth, createOrGetUserProfile])
+    if (event === 'SIGNED_IN' && session?.user) {
+      setUser(session.user)
+      await createOrGetUserProfile(session.user)
+      if (isPopupMode && onClose) {
+        setTimeout(() => {
+          onClose()
+        }, 1500)
+      }
+      setMessage('Signed in successfully!')
+    }
+
+    if (event === 'SIGNED_OUT') {
+      setUser(null)
+      setUserProfile(null)
+      setMessage('')
+      setAuthError('')
+    }
+  })
+
+  return () => subscription.unsubscribe()
+}, [isPopupMode, onClose, createOrGetUserProfile])
+
 
   // Clear messages after delay
   useEffect(() => {
