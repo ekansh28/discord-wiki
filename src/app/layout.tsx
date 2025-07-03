@@ -3,7 +3,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Ballscord Wiki",
-  description: "A retro wiki with Windows 98 styling",
+    icons: {
+    icon: '/favicon.ico',
+  },
+  description: "Ballscord wiki for the ballscord discord server",
 };
 
 export default function RootLayout({
